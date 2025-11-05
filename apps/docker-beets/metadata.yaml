@@ -1,4 +1,4 @@
 ---
 # renovate: datasource=docker depName=linuxserver/docker-beets
 version: 2.5.1-ls296
-name: beets-audible
+name: docker-beets
