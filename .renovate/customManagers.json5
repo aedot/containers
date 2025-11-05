@@ -1,0 +1,27 @@
+{
+    $schema: "https://docs.renovatebot.com/renovate-schema.json",
+    customManagers: [
+        {
+            customType: "regex",
+            description: "Process annotated dependencies",
+            fileMatch: ["(^|/)metadata\\.ya?ml$", "(^|/)Dockerfile$"],
+            matchStrings: [
+                "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?( extractVersion=(?<extractVersion>\\S+))?\\n.+ (?<currentValue>[v|\\d]\\S+)",
+                '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?( extractVersion=(?<extractVersion>\\S+))?\\nARG \\S+_TAG="(?<currentValue>[v|\\d]\\S+)"',
+            ],
+            datasourceTemplate: "{{#if datasource}}{{{datasource}}}{{else}}github-releases{{/if}}",
+            versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
+            extractVersionTemplate: "{{#if extractVersion}}{{{extractVersion}}}{{else}}^(?<version>.*)${{/if}}",
+        },
+        {
+            customType: "regex",
+            description: "PostgreSQL",
+            fileMatch: ["apps/postgres18/Dockerfile"],
+            matchStrings: ['ARG CNPG_TAG="(?<currentValue>.*)"'],
+            datasourceTemplate: "docker",
+            depNameTemplate: "ghcr.io/cloudnative-pg/postgresql",
+            // matches: 17.6-202509151215-standard-trixie
+            versioningTemplate: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)-(?<patch>\\d+)-(?<compatibility>.*)$",
+        },
+    ],
+}
