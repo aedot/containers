@@ -1,0 +1,31 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/github-action.json
+name: App Tests
+description: Takes an app, app image and token then runs app tests
+
+inputs:
+  app:
+    description: App Name
+    required: true
+  image:
+    description: Image
+    required: true
+  token:
+    description: GitHub Token
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Go
+      uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+      with:
+        go-version-file: go.mod
+
+    - name: Run Tests
+      shell: bash
+      env:
+        APP: ${{ inputs.app }}
+        TEST_IMAGE: ${{ inputs.image }}
+      run: |-
+        go test -v ./apps/${APP}/...
