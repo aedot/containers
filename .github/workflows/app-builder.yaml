@@ -293,7 +293,7 @@ jobs:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
 
-      - name: Get Application Options
+      - name: Get Application Options 
         id: app-options
         uses: ./.github/actions/app-options
         with:
