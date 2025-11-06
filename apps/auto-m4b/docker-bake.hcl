@@ -18,13 +18,12 @@ variable "M4B_TOOL_DOWNLOAD_LINK" {
   default = "https://github.com/sandreas/m4b-tool/releases/download/v0.5.2/m4b-tool.phar"
 }
 
-# Automatically set UID/GID to host values if available, fallback to 1000
 variable "PUID" {
-  default = "${env.HOST_UID}"
+  default = "1000"
 }
 
 variable "PGID" {
-  default = "${env.HOST_GID}"
+  default = "1000"
 }
 
 variable "CPU_CORES" {
