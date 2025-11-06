@@ -117,9 +117,17 @@ ENV PGID=""
 ENV CPU_CORES=""
 ENV SLEEPTIME=""
 
-#Merge-Script importieren
-ADD runscript.sh /etc/service/bot/run
-ADD auto-m4b-tool.sh /
+# #Merge-Script importieren
+# ADD runscript.sh /etc/service/bot/run
+# ADD auto-m4b-tool.sh /
+
+#. Temp change to copy
+# Merge scripts
+COPY runscript.sh /etc/service/bot/run
+COPY auto-m4b-tool.sh /opt/app/auto-m4b-tool.sh
+
+# Make them executable
+RUN chmod +x /etc/service/bot/run /opt/app/auto-m4b-tool.sh
 
 #install actual m4b-tool
 #RUN echo "---- INSTALL M4B-TOOL ----" && \
