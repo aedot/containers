@@ -29,12 +29,15 @@ target "image" {
 
 target "image-local" {
   inherits = ["image"]
+  context = "."
+  dockerfile = "Dockerfile"
   output = ["type=docker"]
   tags = ["${APP}:${VERSION}"]
 }
 
 target "image-all" {
   inherits = ["image"]
+  context = "."
   platforms = [
     "linux/amd64",
     "linux/arm64"
