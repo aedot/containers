@@ -1,12 +1,10 @@
 FROM phusion/baseimage:jammy-1.0.1
 #FROM phusion/baseimage:master
 
-
 #Basic Container
 RUN echo "---- INSTALL RUNTIME PACKAGES ----" && \
     apt-get update && apt-get install -y --no-install-recommends \
-    nasm \
-	python3-pip \
+    python3-pip \
     git \
     #ffmpeg \
     dnsutils \
@@ -96,11 +94,15 @@ LABEL Description="Container to run m4b-tool as a deamon."
 RUN echo "---- INSTALL M4B-TOOL DEPENDENCIES ----" && \
     apt-get update && apt-get install -y --no-install-recommends \
     fdkaac \
-    php-cli \
-    php-intl \
-    php-json \
-    php-mbstring \
-    php-xml \
+    software-properties-common \
+    && add-apt-repository ppa:ondrej/php \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    php8.2-cli \
+    php8.2-intl \
+    php8.2-mbstring \
+    php8.2-xml \
+    php8.2-curl \
+    php8.2-zip \
     libxcb-shm0-dev \
     libxcb-xfixes0-dev \
     libasound-dev \
@@ -119,26 +121,16 @@ ENV SLEEPTIME=""
 
 #Merge-Script importieren
 ADD runscript.sh /etc/service/bot/run
-ADD auto-m4b-tool.sh /auto-m4b-tool.sh
+ADD auto-m4b-tool.sh /
 
 #install actual m4b-tool
 #RUN echo "---- INSTALL M4B-TOOL ----" && \
 #    wget https://github.com/sandreas/m4b-tool/releases/download/v.0.4.2/m4b-tool.phar -O /usr/local/bin/m4b-tool && \
 #    chmod +x /usr/local/bin/m4b-tool
-ARG M4B_TOOL_DOWNLOAD_LINK="https://github.com/sandreas/m4b-tool/releases/latest/download/m4b-tool.tar.gz"
+ARG M4B_TOOL_DOWNLOAD_LINK="https://github.com/sandreas/m4b-tool/releases/download/v0.5.2/m4b-tool.phar"
 RUN echo "---- INSTALL M4B-TOOL ----" \
-    && if [ ! -f /tmp/m4b-tool.phar ]; then \
-            wget "${M4B_TOOL_DOWNLOAD_LINK}" -O /tmp/m4b-tool.tar.gz && \
-            if [ ! -f /tmp/m4b-tool.phar ]; then \
-                tar xzf /tmp/m4b-tool.tar.gz -C /tmp/ && rm /tmp/m4b-tool.tar.gz ;\
-            fi \
-       fi \
-    && mv /tmp/m4b-tool.phar /usr/local/bin/m4b-tool \
-    && M4B_TOOL_PRE_RELEASE_LINK=$(wget -q -O - https://github.com/sandreas/m4b-tool/releases/tag/latest | grep -o 'M4B_TOOL_DOWNLOAD_LINK=[^ ]*' | head -1 | cut -d '=' -f 2) \
-    && wget "${M4B_TOOL_PRE_RELEASE_LINK}" -O /tmp/m4b-tool.tar.gz \
-    && tar xzf /tmp/m4b-tool.tar.gz -C /tmp/ && rm /tmp/m4b-tool.tar.gz \
-    && mv /tmp/m4b-tool.phar /usr/local/bin/m4b-tool-pre \
-    && chmod +x /usr/local/bin/m4b-tool /usr/local/bin/m4b-tool-pre
+    && wget "${M4B_TOOL_DOWNLOAD_LINK}" -O /usr/local/bin/m4b-tool \
+    && chmod +x /usr/local/bin/m4b-tool
 
 #use the remommended clean command
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

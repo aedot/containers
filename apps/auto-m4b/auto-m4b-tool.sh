@@ -138,7 +138,23 @@ while [ $m -ge 0 ]; do
 					echo Bitrate = $bit
 					echo The folder "$book" will be merged to "$m4bfile"
 					echo Starting Conversion
+
+					# Ensure output directory exists
+					mkdir -p "$outputfolder$book"
+
+					# First run m4b-tool to create the M4B file
 					m4b-tool merge "$book" -n -q --audio-bitrate="$bit" --skip-cover --use-filenames-as-chapters --no-chapter-reindexing --audio-codec=libfdk_aac --jobs="$CPUcores" --output-file="$m4bfile" --logfile="$logfile"
+
+					# Now export chapters to a separate file
+					chaptersfile="$outputfolder$book/$book.chapters.txt"
+					m4b-tool chapters --no-chapter-import --output-file="$chaptersfile" "$m4bfile"
+
+					if [ -f "$chaptersfile" ]; then
+						echo "Successfully created chapters file: $chaptersfile"
+					else
+						echo "Warning: Failed to create chapters file"
+					fi
+
 					mv "$inputfolder$book" "$binfolder"
 				fi
 				echo Finished Converting

@@ -6,7 +6,7 @@ variable "APP" {
 
 variable "VERSION" {
   // renovate: datasource=github-releases depName=seanap/auto-m4b
-  default = "v1.5.3"
+  default = "1.5.3"
 }
 
 variable "SOURCE" {
@@ -29,15 +29,12 @@ target "image" {
 
 target "image-local" {
   inherits = ["image"]
-  context = "."
-  dockerfile = "Dockerfile"
   output = ["type=docker"]
   tags = ["${APP}:${VERSION}"]
 }
 
 target "image-all" {
   inherits = ["image"]
-  context = "."
   platforms = [
     "linux/amd64",
     "linux/arm64"
