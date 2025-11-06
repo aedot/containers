@@ -62,8 +62,10 @@ RUN echo "---- INSTALL M4B-TOOL ----" && \
     chmod +x /usr/local/bin/m4b-tool
 
 # ---- Copy your scripts ----
-ADD runscript.sh /etc/service/bot/run
-ADD auto-m4b-tool.sh /
+# ADD runscript.sh /etc/service/bot/run
+# ADD auto-m4b-tool.sh /
+COPY auto-m4b-tool.sh /
+COPY runscript.sh /etc/service/bot/run
 
 # ---- Environment and Volumes ----
 ENV PUID="" \
@@ -72,6 +74,9 @@ ENV PUID="" \
     SLEEPTIME=""
 
 VOLUME ["/temp", "/config"]
+
+# Create a non-root user
+RUN useradd -m -s /bin/bash appuser
 
 # ---- Set permissions for mounted volumes ----
 RUN mkdir -p /temp /config \
