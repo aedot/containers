@@ -1,42 +1,14 @@
-target "docker-metadata-action" {}
+package main
 
-variable "APP" {
-  default = "busybox"
-}
+import (
+	"context"
+	"testing"
 
-variable "VERSION" {
-  // renovate: datasource=docker depName=docker.io/library/busybox
-  default = "1.37.0"
-}
+	"github.com/aedot/containers/testhelpers"
+)
 
-variable "SOURCE" {
-  default = "https://www.busybox.net"
-}
-
-group "default" {
-  targets = ["image-local"]
-}
-
-target "image" {
-  inherits = ["docker-metadata-action"]
-  args = {
-    VERSION = "${VERSION}"
-  }
-  labels = {
-    "org.opencontainers.image.source" = "${SOURCE}"
-  }
-}
-
-target "image-local" {
-  inherits = ["image"]
-  output = ["type=docker"]
-  tags = ["${APP}:${VERSION}"]
-}
-
-target "image-all" {
-  inherits = ["image"]
-  platforms = [
-    "linux/amd64",
-    "linux/arm64"
-  ]
+func Test(t *testing.T) {
+	ctx := context.Background()
+	image := testhelpers.GetTestImage("ghcr.io/aedot/busybox:rolling")
+	testhelpers.TestCommandSucceeds(t, ctx, image, nil, "/bin/busybox", "--list")
 }

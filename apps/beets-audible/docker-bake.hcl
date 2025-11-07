@@ -5,16 +5,16 @@ variable "APP" {
 }
 
 variable "VERSION" {
-  // renovate: datasource=docker depName=linuxserver/beets
-  default = "2.5.1"
-}
-
-variable "SOURCE" {
-  default = "https://linuxserver.io"
+  // renovate: datasource=github-releases depName=beetbox/beets versioning=loose
+  default = "v2.5.1"
 }
 
 group "default" {
   targets = ["image-local"]
+}
+
+variable "SOURCE" {
+  default = "https://github.com//beetbox/beets"
 }
 
 target "image" {
