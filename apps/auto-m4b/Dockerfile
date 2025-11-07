@@ -63,9 +63,7 @@ RUN echo "---- INSTALL M4B-TOOL ----" && \
 
 # ---- Copy your scripts ----
 ADD runscript.sh /etc/service/bot/run
-# ADD auto-m4b-tool.sh /
-COPY auto-m4b-tool.sh /
-# COPY runscript.sh /etc/service/bot/run
+ADD ./apps/auto-m4b/auto-m4b-tool.sh /
 
 # ---- Environment and Volumes ----
 ENV PUID="" \
