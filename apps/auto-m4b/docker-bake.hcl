@@ -1,3 +1,5 @@
+# docker-bake.hcl - no caching, GitHub Actions compatible
+
 target "docker-metadata-action" {}
 
 variable "APP" {
@@ -13,10 +15,15 @@ variable "SOURCE" {
   default = "https://github.com/seanap/m4b-tool"
 }
 
-group "default" {
-  targets = ["image-local"]
+variable "REGISTRY" {
+  default = "ghcr.io/${GITHUB_REPOSITORY_OWNER}"
 }
 
+group "default" {
+  targets = ["image-ghcr"]
+}
+
+# Base image target with labels and build args
 target "image" {
   inherits = ["docker-metadata-action"]
   args = {
@@ -29,14 +36,21 @@ target "image" {
   }
 }
 
+# Local image target for testing (optional)
 target "image-local" {
   inherits = ["image"]
   output = ["type=docker"]
   tags = ["${APP}:${VERSION}"]
 }
 
-target "image-all" {
+# GHCR target for GitHub Actions - no cache
+target "image-ghcr" {
   inherits = ["image"]
+  output = ["type=registry"]  # push to GHCR
+  tags = [
+    "${REGISTRY}/${APP}:${VERSION}",
+    "${REGISTRY}/${APP}:latest"
+  ]
   platforms = [
     "linux/amd64",
     "linux/arm64"
