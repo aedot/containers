@@ -1,6 +1,5 @@
-# =====================================
-# Variables
-# =====================================
+target "docker-metadata-action" {}
+
 variable "APP" {
   default = "auto-m4b"
 }
@@ -14,47 +13,14 @@ variable "SOURCE" {
   default = "https://github.com/seanap/m4b-tool"
 }
 
-variable "M4B_TOOL_DOWNLOAD_LINK" {
-  default = "https://github.com/sandreas/m4b-tool/releases/download/v0.5.2/m4b-tool.phar"
-}
-
-variable "PUID" {
-  default = "1000"
-}
-
-variable "PGID" {
-  default = "1000"
-}
-
-variable "CPU_CORES" {
-  default = "2"
-}
-
-variable "SLEEPTIME" {
-  default = "5"
-}
-
-# =====================================
-# Target Groups
-# =====================================
 group "default" {
   targets = ["image-local"]
 }
 
-# =====================================
-# Targets
-# =====================================
-target "docker-metadata-action" {}
-
 target "image" {
   inherits = ["docker-metadata-action"]
   args = {
-    VERSION                 = "${VERSION}"
-    M4B_TOOL_DOWNLOAD_LINK  = "${M4B_TOOL_DOWNLOAD_LINK}"
-    PUID                    = "${PUID}"
-    PGID                    = "${PGID}"
-    CPU_CORES               = "${CPU_CORES}"
-    SLEEPTIME               = "${SLEEPTIME}"
+    VERSION = "${VERSION}"
   }
   labels = {
     "org.opencontainers.image.source"  = "${SOURCE}"
@@ -75,5 +41,4 @@ target "image-all" {
     "linux/amd64",
     "linux/arm64"
   ]
-  tags = ["${APP}:${VERSION}"]
 }
