@@ -23,10 +23,9 @@
       versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
     },
   ],
-
   packageRules: [
     {
-      description: ["Release Rules for Application Updates"],
+      description: ["Release Rules for App Updates"],
       addLabels: ["app/{{parentDir}}"],
       additionalBranchPrefix: "{{parentDir}}-",
       commitMessageExtra: "( {{currentVersion}} → {{newVersion}} )",
@@ -36,7 +35,7 @@
       semanticCommitType: "release",
     },
     {
-      description: ["Auto-merge Application Updates"],
+      description: ["Auto-merge App Updates"],
       matchFileNames: ["**/docker-bake.hcl"],
       automerge: true,
       automergeType: "pr",
@@ -61,6 +60,13 @@
       matchFileNames: ["**/Dockerfile"],
       matchPackageNames: ["/python/"],
       allowedVersions: "/3\\.13-alpine3\\.22/",
+    },
+    {
+      description: ["Allowed Java Version for NZBHydra2 Base Image"],
+      matchDatasources: ["docker"],
+      matchFileNames: ["apps/nzbhydra2/Dockerfile"],
+      matchPackageNames: ["/amazoncorretto/"],
+      allowedVersions: "/17-alpine3\\.22/",
     },
   ],
 }
