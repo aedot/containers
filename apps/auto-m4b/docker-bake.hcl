@@ -16,7 +16,7 @@ variable "SOURCE" {
 }
 
 variable "REGISTRY" {
-  default = "ghcr.io/${GITHUB_REPOSITORY_OWNER}"
+  default = "ghcr.io/aedot"
 }
 
 group "default" {
