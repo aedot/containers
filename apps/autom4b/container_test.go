@@ -12,7 +12,7 @@ func TestContainerStarts(t *testing.T) {
 	ctx := context.Background()
 
 	// Use the updated image name
-	image := testhelpers.GetTestImage("ghcr.io/aedot/auto-m4b:alpine")
+	image := testhelpers.GetTestImage("ghcr.io/aedot/autom4b:rolling")
 
 	// Run the container and wait for it to start
 	container, err := testhelpers.RunContainer(ctx, image, nil)
