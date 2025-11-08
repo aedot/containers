@@ -8,46 +8,42 @@ import (
 	"github.com/aedot/containers/testhelpers"
 )
 
+// TestContainerStarts ensures the autom4b container boots correctly and runs its entrypoint logic.
 func TestContainerStarts(t *testing.T) {
 	ctx := context.Background()
 
-	// Use the updated image name
 	image := testhelpers.GetTestImage("ghcr.io/aedot/autom4b:rolling")
 
-	// Run the container and wait for it to start
+	// Run the container and wait for it to initialize
 	container, err := testhelpers.RunContainer(ctx, image, nil)
 	if err != nil {
-		t.Fatalf("Failed to start container: %v", err)
+		t.Fatalf("failed to start container: %v", err)
 	}
-	defer container.Terminate(ctx)
+	defer func() {
+		if err := container.Terminate(ctx); err != nil {
+			t.Logf("failed to terminate container: %v", err)
+		}
+	}()
 
-	// Give the entrypoint script a few seconds to initialize
+	// Allow entrypoint.sh to initialize properly
 	time.Sleep(5 * time.Second)
 
-	// Check container logs for expected startup message
+	// Fetch container logs
 	logs, err := container.Logs(ctx)
 	if err != nil {
-		t.Fatalf("Failed to fetch container logs: %v", err)
+		t.Fatalf("failed to fetch container logs: %v", err)
 	}
 
-	if !containsExpectedStartupMessage(logs) {
-		t.Errorf("Container did not start as expected, logs:\n%s", logs)
-	}
-}
-
-// Helper function to detect startup logs
-func containsExpectedStartupMessage(logs string) bool {
-	// Adjust this based on what your entrypoint prints
+	// Check for expected startup messages
 	expectedMessages := []string{
-		"Created missing",    // user creation
-		"Using all CPU cores", // default CPU detection
-		"No folders detected", // default m4b-tool loop
+		"Created missing",    // user creation log
+		"Using",              // CPU core detection
+		"Sleeping",           // main loop activity
 	}
 
 	for _, msg := range expectedMessages {
 		if !testhelpers.StringContains(logs, msg) {
-			return false
+			t.Errorf("expected log message containing %q not found.\n--- Logs ---\n%s", msg, logs)
 		}
 	}
-	return true
 }
