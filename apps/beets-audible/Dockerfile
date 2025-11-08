@@ -80,7 +80,6 @@ RUN set -eux; \
         beets==${VERSION} \
         beets-extrafiles \
         beets-audible \
-        beets-copyartifacts3 \
         beetcamp \
         python3-discogs-client \
         flask \
