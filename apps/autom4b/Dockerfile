@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN mkdir -p /tmp/ffmpeg_sources /tmp/ffmpeg_build
 RUN cd /tmp/ffmpeg_sources && \
-    git clone --verbose --depth 1 https://github.com/mstorsjo/fdk-aac && \
+    git clone --depth 1 https://github.com/mstorsjo/fdk-aac && \
     cd fdk-aac && autoreconf -fiv && \
     ./configure --prefix=/tmp/ffmpeg_build --disable-shared && \
     make && make install && make distclean
