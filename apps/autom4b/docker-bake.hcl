@@ -24,7 +24,6 @@ target "image" {
   }
   labels = {
     "org.opencontainers.image.source" = "${SOURCE}"
-    "org.opencontainers.image.version" = "${VERSION}"
   }
 }
 
