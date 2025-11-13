@@ -79,6 +79,7 @@ RUN set -eux; \
         beautifulsoup4 \
         beets==${VERSION} \
         beets-extrafiles \
+        beets[plexupdate] \
         beets-audible \
         beetcamp \
         python3-discogs-client \
