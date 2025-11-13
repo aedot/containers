@@ -1,24 +1,23 @@
 #!/bin/bash
 set -e
 
-# Ensure virtualenv is in PATH
 export PATH="/opt/venv/bin:$PATH"
 
-# Ensure /config exists and is writable
+# Ensure writable /config exists (PVC)
 mkdir -p /config
 chmod u+rwx /config
 
-# # Initialize Beets config if not exists
-# if [ ! -f "/config/config.yaml" ]; then
-#     echo "[INFO] Initializing default Beets config..."
-#     beet config -p > /config/config.yaml || true
-# fi
+# Copy ConfigMap config.yaml into writable /config if it doesn't exist
+if [ ! -f /config/config.yaml ]; then
+    echo "[INFO] Copying default config.yaml into /config..."
+    cp /tmp/config/config.yaml /config/config.yaml || true
+fi
 
 # Ensure database is writable
 touch /config/library.db || true
 chmod u+rw /config/library.db
 
-# Start Beets (adjust your command)
+# Start Beets
 echo "[INFO] Starting Beets..."
 if [ "$1" = "web" ]; then
     echo "[INFO] Starting Beets web interface..."

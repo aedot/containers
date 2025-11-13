@@ -94,15 +94,14 @@ RUN set -eux; \
     apk del --purge build-dependencies; \
     rm -rf /tmp/* /root/.cache /root/.cargo
 
-COPY . /
+# Copy entrypoint
+COPY ./entrypoint.sh /entrypoint.sh
 
-RUN chmod +x /entrypoint.sh \
-    && mkdir -p /config \
-    && chown -R nobody:nogroup /config /entrypoint.sh
+# Make entrypoint executable
+RUN chmod +x /entrypoint.sh
 
 USER nobody:nogroup
 WORKDIR /config
 VOLUME ["/config"]
-EXPOSE 8337
 
 ENTRYPOINT ["/sbin/tini", "--", "/entrypoint.sh"]
