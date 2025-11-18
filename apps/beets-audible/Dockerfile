@@ -1,13 +1,10 @@
 # syntax=docker/dockerfile:1
-
 FROM docker.io/library/alpine:3.22
 ARG VERSION
-
 ENV PATH="/opt/venv/bin:$PATH" \
     BEETSDIR="/config" \
     HOME="/config" \
     EDITOR="nano"
-
 RUN set -eux; \
     echo "**** install build packages ****"; \
     apk add --no-cache --virtual=build-dependencies \
@@ -101,8 +98,11 @@ COPY ./entrypoint.sh /entrypoint.sh
 # Make entrypoint executable
 RUN chmod +x /entrypoint.sh
 
+# Create /config directory and set ownership
+RUN mkdir -p /config && \
+    chown -R nobody:nogroup /config
+
 USER nobody:nogroup
 WORKDIR /config
 VOLUME ["/config"]
-
 ENTRYPOINT ["/sbin/tini", "--", "/entrypoint.sh"]
