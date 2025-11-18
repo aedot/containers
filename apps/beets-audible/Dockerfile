@@ -49,7 +49,9 @@ RUN set -eux; \
         python3 \
         py3-pip \
         sqlite-libs \
-        tini; \
+        tini \
+        su-exec \
+        shadow; \
     echo "**** compile mp3gain ****"; \
     mkdir -p /tmp/mp3gain-src; \
     curl -sL -o /tmp/mp3gain-src/mp3gain.zip \
@@ -92,17 +94,19 @@ RUN set -eux; \
     apk del --purge build-dependencies; \
     rm -rf /tmp/* /root/.cache /root/.cargo
 
+# Create a dedicated user with a specific UID/GID
+RUN groupadd -g 1000 beets && \
+    useradd -u 1000 -g beets -s /bin/bash -m beets
+
 # Copy entrypoint
 COPY ./entrypoint.sh /entrypoint.sh
 
-# Make entrypoint executable
-RUN chmod +x /entrypoint.sh
+# Make entrypoint executable and create config directory
+RUN chmod +x /entrypoint.sh && \
+    mkdir -p /config && \
+    chown -R beets:beets /config
 
-# Create /config directory and set ownership
-RUN mkdir -p /config && \
-    chown -R nobody:nogroup /config
-
-USER nobody:nogroup
+USER beets:beets
 WORKDIR /config
 VOLUME ["/config"]
 ENTRYPOINT ["/sbin/tini", "--", "/entrypoint.sh"]
