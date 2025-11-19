@@ -125,8 +125,8 @@ RUN echo "---- INSTALL M4B-TOOL ${M4B_VERSION} ----" && \
     m4b-tool --version
 
 # Copy scripts
-COPY container/apps/m4b-tool/auto-m4b-tool.sh /auto-m4b-tool.sh
-COPY container/apps/m4b-tool/runscript.sh /etc/service/bot/run
+COPY auto-m4b-tool.sh /auto-m4b-tool.sh
+COPY runscript.sh /etc/service/bot/run
 
 # CRITICAL: Set execute permissions on scripts
 RUN chmod +x /auto-m4b-tool.sh && \
