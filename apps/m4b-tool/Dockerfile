@@ -117,9 +117,9 @@ RUN echo "---- INSTALL M4B-TOOL DEPENDENCIES ----" && \
     rm -rf /var/lib/apt/lists/*
 
 # Install m4b-tool
-ARG M4B_VERSION=v0.5.2
-RUN echo "---- INSTALL M4B-TOOL ${M4B_VERSION} ----" && \
-    wget https://github.com/sandreas/m4b-tool/releases/download/${M4B_VERSION}/m4b-tool.phar \
+ARG VERSION
+RUN echo "---- INSTALL M4B-TOOL ${VERSION} ----" && \
+    wget https://github.com/sandreas/m4b-tool/releases/download/${VERSION}/m4b-tool.phar \
     -O /usr/local/bin/m4b-tool && \
     chmod +x /usr/local/bin/m4b-tool && \
     m4b-tool --version
