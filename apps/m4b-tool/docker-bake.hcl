@@ -19,8 +19,6 @@ group "default" {
 
 target "image" {
   inherits = ["docker-metadata-action"]
-  context = "./apps/m4b-tool"  # <-- build context
-  dockerfile = "Dockerfile"    # Dockerfile relative to context
   args = {
     VERSION = "${VERSION}"
   }
