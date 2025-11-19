@@ -5,28 +5,23 @@ variable "APP" {
 }
 
 variable "VERSION" {
+  // renovate: datasource=github-releases depName=sandreas/m4b-tool versioning=loose
   default = "v0.5.2"
-}
-
-variable "SOURCE" {
-  default = "https://github.com/sandreas/m4b-tool"
 }
 
 group "default" {
   targets = ["image-local"]
 }
 
+variable "SOURCE" {
+  default = "https://github.com/sandreas/m4b-tool"
+}
+
 target "image" {
   inherits = ["docker-metadata-action"]
-
-  # MOST IMPORTANT FIX
-  context = "./apps/m4b-tool"
-  dockerfile = "./apps/m4b-tool/Dockerfile"
-
   args = {
     VERSION = "${VERSION}"
   }
-
   labels = {
     "org.opencontainers.image.source" = "${SOURCE}"
   }
