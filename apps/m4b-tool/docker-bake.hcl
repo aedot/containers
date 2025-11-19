@@ -1,12 +1,12 @@
 target "docker-metadata-action" {}
 
 variable "APP" {
-  default = "beets"
+  default = "m4b-tool"
 }
 
 variable "VERSION" {
-  // renovate: datasource=github-releases depName=beetbox/beets versioning=loose
-  default = "v2.5.1"
+  // renovate: datasource=github-releases depName=sandreas/m4b-tool versioning=loose
+  default = "v0.5.2"
 }
 
 group "default" {
@@ -14,7 +14,7 @@ group "default" {
 }
 
 variable "SOURCE" {
-  default = "https://github.com/beetbox/beets"
+  default = "https://github.com/sandreas/m4b-tool"
 }
 
 target "image" {
