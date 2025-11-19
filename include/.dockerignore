@@ -5,3 +5,5 @@
 !defaults/
 !scripts/
 !entrypoint.sh
+!runscript.sh
+!auto-*.sh
