@@ -1,7 +1,6 @@
-FROM phusion/baseimage:noble-1.0.2
+FROM ubuntu:noble
 
 ENV DEBIAN_FRONTEND=noninteractive
-
 LABEL Description="Container to run m4b-tool as a daemon."
 
 # Install runtime packages
@@ -14,7 +13,8 @@ RUN echo "---- INSTALL RUNTIME PACKAGES ----" && \
     iputils-ping \
     wget \
     bc \
-    crudini && \
+    crudini \
+    ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Install all build dependencies and build FFmpeg + mp4v2
@@ -124,22 +124,35 @@ RUN echo "---- INSTALL M4B-TOOL ${VERSION} ----" && \
     chmod +x /usr/local/bin/m4b-tool && \
     m4b-tool --version
 
+# Create directories and set permissions
+RUN mkdir -p /temp /config && \
+    chmod 755 /temp /config
+
 # Copy scripts
 COPY auto-m4b-tool.sh /auto-m4b-tool.sh
-ADD runscript.sh /etc/service/bot/run
+COPY runscript.sh /runscript.sh
 
-# CRITICAL: Set execute permissions on scripts
+# Set execute permissions on scripts
 RUN chmod +x /auto-m4b-tool.sh && \
-    chmod +x /etc/service/bot/run && \
+    chmod +x /runscript.sh && \
     ls -la /auto-m4b-tool.sh && \
-    ls -la /etc/service/bot/run
+    ls -la /runscript.sh
+
+# Create non-root user (default 1000:1000)
+RUN groupadd -g 1000 m4buser || true && \
+    useradd -u 1000 -g 1000 -s /bin/bash -d /config m4buser || true && \
+    chown -R 1000:1000 /temp /config /auto-m4b-tool.sh /runscript.sh
 
 # Define volumes
 VOLUME ["/temp", "/config"]
+
 ENV SLEEPTIME=""
 
 # Final cleanup
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Use baseimage-docker's init system
-CMD ["/sbin/my_init"]
+# Switch to non-root user
+USER 1000:1000
+
+# Run the script directly
+CMD ["/runscript.sh"]
