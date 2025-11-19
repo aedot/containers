@@ -9,16 +9,18 @@ variable "VERSION" {
   default = "v0.5.2"
 }
 
-group "default" {
-  targets = ["image-local"]
-}
-
 variable "SOURCE" {
   default = "https://github.com/sandreas/m4b-tool"
 }
 
+group "default" {
+  targets = ["image-local"]
+}
+
 target "image" {
   inherits = ["docker-metadata-action"]
+  context = "./apps/m4b-tool"  # <-- build context
+  dockerfile = "Dockerfile"    # Dockerfile relative to context
   args = {
     VERSION = "${VERSION}"
   }
