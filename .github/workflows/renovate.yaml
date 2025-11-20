@@ -9,6 +9,8 @@ on:
     paths:
       - .renovaterc.json5
       - .renovate/**.json5
+  schedule:
+    - cron: "20 0 */7 * *"  # Every 7 days at 00:20 PDT
   workflow_dispatch:
 
 jobs:
