@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:noble
+
+FROM docker.io/library/ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 LABEL Description="Container to run m4b-tool as a daemon."

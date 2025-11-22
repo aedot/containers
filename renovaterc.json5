@@ -1,11 +1,15 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["github>aedot/renovate-config"],
+  extends: [
+    "github>aedot/renovate-config"
+  ],
   customManagers: [
     {
       customType: "regex",
       description: "Process Annotations in Docker Bake",
-      managerFilePatterns: ["/(^|/)docker-bake\\.hcl$/"],
+      managerFilePatterns: [
+        "/(^|/)docker-bake\\.hcl$/"
+      ],
       matchStrings: [
         "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\n.+ = \"(?<currentValue>[^\"]+)\"",
       ],
@@ -15,7 +19,9 @@
     {
       customType: "regex",
       description: "Process Annotations in Dockerfiles",
-      managerFilePatterns: ["/(^|/)Dockerfile$/"],
+      managerFilePatterns: [
+        "/(^|/)Dockerfile$/"
+      ],
       matchStrings: [
         "datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\n.+(:\\s|=)(&\\S+\\s)?(?<currentValue>\\S+)",
       ],
@@ -25,48 +31,74 @@
   ],
   packageRules: [
     {
-      description: ["Release Rules for App Updates"],
-      addLabels: ["app/{{parentDir}}"],
+      description: [
+        "Release Rules for App Updates"
+      ],
+      addLabels: [
+        "app/{{parentDir}}"
+      ],
       additionalBranchPrefix: "{{parentDir}}-",
       commitMessageExtra: "( {{currentVersion}} → {{newVersion}} )",
       commitMessageTopic: "{{depName}}",
-      matchFileNames: ["**/docker-bake.hcl", "**/Dockerfile"],
+      matchFileNames: [
+        "**/docker-bake.hcl",
+        "**/Dockerfile"
+      ],
       semanticCommitScope: "{{parentDir}}",
       semanticCommitType: "release",
     },
     {
-      description: ["Auto-merge App Updates"],
-      matchFileNames: ["**/docker-bake.hcl"],
+      description: [
+        "Auto-merge App Updates"
+      ],
+      matchFileNames: [
+        "**/docker-bake.hcl"
+      ],
       automerge: true,
       automergeType: "pr",
       ignoreTests: false,
     },
     {
-      description: ["Allowed Ubuntu Version for Base Images"],
-      matchDatasources: ["docker"],
-      matchPackageNames: ["/ubuntu/"],
+      description: [
+        "Allowed Ubuntu Version for Base Images"
+      ],
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "/ubuntu/"
+      ],
       allowedVersions: "/24\\.04/",
     },
     {
-      description: ["Allowed Alpine Version for Base Images"],
-      matchDatasources: ["docker"],
-      matchFileNames: ["**/Dockerfile"],
-      matchPackageNames: ["/alpine/"],
+      description: [
+        "Allowed Alpine Version for Base Images"
+      ],
+      matchDatasources: [
+        "docker"
+      ],
+      matchFileNames: [
+        "**/Dockerfile"
+      ],
+      matchPackageNames: [
+        "/alpine/"
+      ],
       allowedVersions: "/3\\.22/",
     },
     {
-      description: ["Allowed Python Version for Base Images"],
-      matchDatasources: ["docker"],
-      matchFileNames: ["**/Dockerfile"],
-      matchPackageNames: ["/python/"],
+      description: [
+        "Allowed Python Version for Base Images"
+      ],
+      matchDatasources: [
+        "docker"
+      ],
+      matchFileNames: [
+        "**/Dockerfile"
+      ],
+      matchPackageNames: [
+        "/python/"
+      ],
       allowedVersions: "/3\\.13-alpine3\\.22/",
-    },
-    {
-      description: ["Allowed Java Version for NZBHydra2 Base Image"],
-      matchDatasources: ["docker"],
-      matchFileNames: ["apps/nzbhydra2/Dockerfile"],
-      matchPackageNames: ["/amazoncorretto/"],
-      allowedVersions: "/17-alpine3\\.22/",
     },
   ],
 }
