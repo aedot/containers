@@ -1,123 +1,59 @@
-# syntax=docker/dockerfile:1
-FROM docker.io/library/alpine:3.22
-
 ARG VERSION
-ARG UID=1000
-ARG GID=1000
+FROM lscr.io/linuxserver/beets:${VERSION}
 
-ENV PATH="/opt/venv/bin:$PATH" \
-    BEETSDIR="/config" \
-    HOME="/config" \
-    EDITOR="nano"
+# Build arguments
+ARG PLUGIN_VERSION
+ARG BUILD_DATE
+ARG VERSION
 
-# Install all dependencies and compile tools as root (required)
-RUN set -eux; \
-    echo "**** install build packages ****"; \
-    apk add --no-cache --virtual=build-dependencies \
-        build-base \
-        ca-certificates \
-        cairo-dev \
-        cargo \
-        cmake \
-        ffmpeg-dev \
-        fftw-dev \
-        git \
-        gobject-introspection-dev \
-        jpeg-dev \
-        libpng-dev \
-        mpg123-dev \
-        openjpeg-dev \
-        python3-dev \
-        unzip \
-        curl \
-        jq \
-        tzdata; \
-    echo "**** install runtime packages ****"; \
-    apk add --no-cache \
-        bash \
-        chromaprint \
-        expat \
-        ffmpeg \
-        fftw \
-        flac \
-        gdbm \
-        gobject-introspection \
-        gst-plugins-good \
-        gstreamer \
-        imagemagick \
-        jpeg \
-        lame \
-        libffi \
-        libpng \
-        mpg123 \
-        nano \
-        openjpeg \
-        python3 \
-        py3-pip \
-        sqlite-libs \
-        tini \
-        su-exec; \
-    echo "**** compile mp3gain ****"; \
-    mkdir -p /tmp/mp3gain-src; \
-    curl -sL -o /tmp/mp3gain-src/mp3gain.zip \
-        https://sourceforge.net/projects/mp3gain/files/mp3gain/1.6.2/mp3gain-1_6_2-src.zip; \
-    cd /tmp/mp3gain-src; \
-    unzip -qq mp3gain.zip; \
-    sed -i "s#/usr/local/bin#/usr/bin#g" Makefile; \
-    make && make install; \
-    echo "**** compile mp3val ****"; \
-    mkdir -p /tmp/mp3val-src; \
-    curl -sL -o /tmp/mp3val-src/mp3val.tar.gz \
-        https://downloads.sourceforge.net/mp3val/mp3val-0.1.8-src.tar.gz; \
-    cd /tmp/mp3val-src; \
-    tar xzf mp3val.tar.gz --strip 1; \
-    make -f Makefile.linux; \
-    cp -p mp3val /usr/bin; \
-    echo "**** install pip packages ****"; \
-    if [ -z "${VERSION}" ]; then \
-        VERSION=$(curl -sL https://pypi.python.org/pypi/beets/json | jq -r '.info.version'); \
-    fi; \
-    python3 -m venv /opt/venv; \
-    /opt/venv/bin/pip install --upgrade pip wheel; \
-    /opt/venv/bin/pip install --no-cache-dir \
-        beautifulsoup4 \
-        beets==${VERSION} \
-        beets-extrafiles \
-        beets[plexupdate] \
-        beets-audible \
-        beetcamp \
-        python3-discogs-client \
-        flask \
-        PyGObject \
-        pyacoustid \
-        pylast \
-        requests \
-        requests_oauthlib \
-        typing-extensions \
-        unidecode; \
-    echo "**** cleanup ****"; \
-    apk del --purge build-dependencies; \
-    rm -rf /tmp/* /root/.cache /root/.cargo
+# Add metadata labels
+LABEL org.opencontainers.image.source="https://github.com/aedot/containers"
+LABEL org.opencontainers.image.description="Beets with Audible plugin for audiobook management"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL io.linuxserver.base_version="${VERSION}"
 
-# Create non-root user using Alpine's native commands
-RUN addgroup -g ${GID} beets && \
-    adduser -D -u ${UID} -G beets -h /config -s /bin/bash beets
+# Install beets-audible plugin and dependencies
+# Note: This runs as root during build, but runtime uses PUID/PGID
+RUN \
+  echo "**** install beets-audible plugin ****" && \
+  if [ "${PLUGIN_VERSION}" = "latest" ]; then \
+    pip install --no-cache-dir \
+      beets-audible \
+      beets-filetote; \
+  else \
+    pip install --no-cache-dir \
+      beets-audible==${PLUGIN_VERSION} \
+      beets-filetote; \
+  fi && \
+  echo "**** verify installation ****" && \
+  pip list | grep beets && \
+  echo "**** set permissions ****" && \
+  # Ensure pip packages are accessible by non-root users
+  chmod -R 755 /usr/local/lib/python*/site-packages 2>/dev/null || true && \
+  echo "**** cleanup ****" && \
+  rm -rf \
+    /tmp/* \
+    /root/.cache
 
-# Copy entrypoint and set permissions
-COPY --chmod=755 entrypoint.sh /entrypoint.sh
+# Verify plugin installation
+RUN beet version || true
 
-# Create directories and set ownership
-RUN mkdir -p /config /audiobooks /input && \
-    chown -R beets:beets /config /opt/venv && \
-    chmod -R 755 /opt/venv
+# Copy custom init script
+# s6-overlay will run scripts in /etc/cont-init.d/ during initialization
+COPY entrypoint.sh /etc/cont-init.d/99-beets-audible-init
 
-# Switch to non-root user
-USER beets:beets
+# Make init script executable
+RUN chmod +x /etc/cont-init.d/99-beets-audible-init
 
+# Note: LinuxServer images use s6-overlay for init system
+# The container will run as user 'beets' with UID/GID set by PUID/PGID env vars
+# Scripts in /etc/cont-init.d/ run as root initially, then services run as beets
+
+# Set working directory
 WORKDIR /config
 
-VOLUME ["/config", "/audiobooks", "/input"]
-
-ENTRYPOINT ["/sbin/tini", "--", "/entrypoint.sh"]
-
-CMD []
+# Health check for web interface (optional, configure in compose)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD nc -z localhost 8337 || exit 1

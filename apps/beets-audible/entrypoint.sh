@@ -1,87 +1,132 @@
-#!/bin/bash
-set -e
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
 
-export PATH="/opt/venv/bin:$PATH"
+# Beets-Audible Init Script for s6-overlay
+# This runs during container initialization before services start
 
-# Safety check - refuse to run as root
-if [ "$(id -u)" = "0" ]; then
-    echo "[ERROR] This container must not run as root for security reasons."
-    echo "[ERROR] Please run with --user or configure your orchestrator to use a non-root user."
-    exit 1
-fi
+echo "=================================="
+echo "Beets-Audible Container Init"
+echo "=================================="
 
-echo "[INFO] Running as user $(whoami) (UID: $(id -u), GID: $(id -g))"
+# This script runs as root, but we can check what user will run the services
+echo "Init running as: $(whoami)"
+echo "Services will run as: PUID=${PUID:-911}, PGID=${PGID:-911}"
 
-# Ensure writable /config exists (PVC)
-if [ ! -d /config ]; then
-    mkdir -p /config || {
-        echo "[ERROR] Cannot create /config directory. Check volume permissions."
-        echo "[INFO] If using Kubernetes, ensure the PVC has correct permissions or use an initContainer."
-        exit 1
-    }
-fi
-
-# Verify /config is writable
-if [ ! -w /config ]; then
-    echo "[ERROR] /config directory exists but is not writable by UID $(id -u)"
-    echo "[INFO] Current /config permissions: $(ls -ld /config)"
-    echo "[INFO] Please ensure the volume is owned by UID=$(id -u) and GID=$(id -g)"
-    echo "[INFO] Or use an initContainer in Kubernetes to fix permissions"
-    exit 1
-fi
-
-# Copy ConfigMap config.yaml into writable /config if it doesn't exist
-if [ ! -f /config/config.yaml ]; then
-    echo "[INFO] No config.yaml found in /config"
-    if [ -f /tmp/config/config.yaml ]; then
-        echo "[INFO] Copying default config.yaml from /tmp/config/ into /config..."
-        cp /tmp/config/config.yaml /config/config.yaml || {
-            echo "[WARN] Could not copy default config.yaml (permission denied)"
-        }
-    else
-        echo "[INFO] Creating minimal default config.yaml..."
-        cat > /config/config.yaml <<EOF
-directory: /audiobooks
-library: /config/library.db
-EOF
-    fi
-fi
-
-# Ensure database is writable
-touch /config/library.db 2>/dev/null || {
-    echo "[WARN] Could not create/update library.db (may not have write permissions)"
-}
-
-# Verify beets is accessible
-if ! command -v beet &> /dev/null; then
-    echo "[ERROR] beet command not found in PATH"
-    echo "[INFO] Current PATH: $PATH"
-    exit 1
-fi
-
-# Start Beets
-echo "[INFO] Starting Beets..."
-if [ $# -eq 0 ]; then
-    echo "[INFO] No command provided, keeping container alive..."
-    exec tail -f /dev/null
-elif [ "$1" = "web" ]; then
-    echo "[INFO] Starting Beets web interface..."
-    exec beet web
-elif [ "$1" = "bash" ] || [ "$1" = "sh" ] || [ "$1" = "/bin/bash" ] || [ "$1" = "/bin/sh" ]; then
-    echo "[INFO] Starting interactive shell..."
-    exec "$@"
+# Verify beets installation
+if command -v beet &> /dev/null; then
+    BEETS_VERSION=$(beet version 2>&1 | head -n1 || echo "unknown")
+    echo "Beets: ${BEETS_VERSION}"
 else
-    # Check if the first argument is a beet command or looks like a system command
-    case "$1" in
-        beet|/opt/venv/bin/beet)
-            # Already prefixed with beet, execute as-is
-            echo "[INFO] Executing: $@"
-            exec "$@"
-            ;;
-        import|ls|list|modify|move|remove|stats|update|version|config|help|*)
-            # Assume it's a beet subcommand
-            echo "[INFO] Running Beets command: beet $@"
-            exec beet "$@"
-            ;;
-    esac
+    echo "ERROR: Beets not found"
+    exit 1
 fi
+
+# Verify plugins
+echo ""
+echo "Installed plugins:"
+if pip list 2>/dev/null | grep -q "beets-audible"; then
+    AUDIBLE_VERSION=$(pip show beets-audible 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    echo "beets-audible ${AUDIBLE_VERSION}"
+else
+    echo "beets-audible NOT FOUND"
+fi
+
+if pip list 2>/dev/null | grep -q "beets-filetote"; then
+    FILETOTE_VERSION=$(pip show beets-filetote 2>/dev/null | grep "^Version:" | awk '{print $2}')
+    echo "beets-filetote ${FILETOTE_VERSION}"
+else
+    echo "beets-filetote not installed (optional)"
+fi
+
+# Check configuration directory
+echo ""
+if [ -d "/config" ]; then
+    echo "Config directory mounted"
+
+    # Create default config if it doesn't exist
+    if [ ! -f "/config/config.yaml" ]; then
+        echo "Creating default config.yaml..."
+        cat > /config/config.yaml << 'EOF'
+# Beets configuration for audiobooks
+# Edit with: docker exec -it <container> beet config -e
+
+plugins: audible edit fromfilename scrub web
+
+directory: /audiobooks
+
+paths:
+  "albumtype:audiobook series_name::.+ series_position::.+": $albumartist/%ifdef{series_name}/%ifdef{series_position} - $album%aunique{}/$track - $title
+  "albumtype:audiobook series_name::.+": $albumartist/%ifdef{series_name}/$album%aunique{}/$track - $title
+  "albumtype:audiobook": $albumartist/$album%aunique{}/$track - $title
+  default: $albumartist/$album%aunique{}/$track - $title
+
+musicbrainz:
+  enabled: no
+
+audible:
+  match_chapters: true
+  data_source_mismatch_penalty: 0.0
+  fetch_art: true
+  include_narrator_in_artists: true
+  keep_series_reference_in_title: true
+  keep_series_reference_in_subtitle: true
+  write_description_file: true
+  write_reader_file: true
+  region: us
+
+web:
+  host: 0.0.0.0
+  port: 8337
+
+scrub:
+  auto: yes
+EOF
+        echo "Created default config.yaml"
+    else
+        echo "config.yaml found"
+    fi
+
+    # Check library database
+    if [ -f "/config/library.db" ]; then
+        DB_SIZE=$(du -h "/config/library.db" 2>/dev/null | cut -f1 || echo "0")
+        echo "Library database (${DB_SIZE})"
+    else
+        echo "No library yet - will create on first import"
+    fi
+
+    # Set ownership to beets user (will be mapped to PUID:PGID)
+    echo "Setting ownership..."
+    chown -R beets:beets /config 2>/dev/null || true
+
+else
+    echo "ERROR: /config not mounted"
+    exit 1
+fi
+
+# Check volume mounts
+echo ""
+echo "Volume status:"
+[ -d "/audiobooks" ] && echo "/audiobooks mounted" || echo "/audiobooks not mounted"
+[ -d "/input" ] && echo "/input mounted" || echo "/input not mounted (optional)"
+
+# Create directories if they don't exist and are mounted
+if [ -d "/audiobooks" ]; then
+    chown -R beets:beets /audiobooks 2>/dev/null || true
+fi
+
+if [ -d "/input" ]; then
+    chown -R beets:beets /input 2>/dev/null || true
+fi
+
+# Ready message
+echo ""
+echo "=================================="
+echo "    Initialization Complete!"
+echo "=================================="
+echo ""
+echo "Quick Start:"
+echo "  Web UI:   http://localhost:8337"
+echo "  Import:   docker exec -it <container> beet import /input"
+echo "  Config:   docker exec -it <container> beet config -e"
+echo "  Shell:    docker exec -it <container> bash"
+echo ""
