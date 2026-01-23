@@ -6,7 +6,7 @@ variable "APP" {
 
 variable "VERSION" {
   // Base image version - tracks LinuxServer beets releases
-  // renovate: datasource=github-releases depName=linuxserver/docker-beets versioning=loose
+  // renovate: datasource=github-releases depName=linuxserver/docker-beets
   default = "2.5.1-ls306"
 }
 
