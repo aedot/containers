@@ -1,5 +1,6 @@
-ARG VERSION
-FROM lscr.io/linuxserver/beets:${VERSION}
+# syntax=docker/dockerfile:1
+
+FROM lscr.io/linuxserver/beets:latest
 
 # Build arguments
 ARG PLUGIN_VERSION
