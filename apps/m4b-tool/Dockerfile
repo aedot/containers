@@ -153,8 +153,12 @@ ENV SLEEPTIME=""
 # Final cleanup
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD test -x /auto-m4b-tool.sh && test -x /runscript.sh || exit 1
+
 # Switch to non-root user
 USER 1000:1000
 
-# Run the script directly
+# Run script directly
 CMD ["/runscript.sh"]

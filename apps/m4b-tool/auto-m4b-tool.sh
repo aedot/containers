@@ -1,6 +1,74 @@
 #!/bin/bash
 # Auto M4B Tool - Containerized Version
-set -e
+set -euo pipefail
+
+# -------------------------
+# Utility Functions
+# -------------------------
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+log_error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2
+}
+
+log_warn() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: $*" >&2
+}
+
+# Validate directory path is safe and within expected bounds
+validate_directory() {
+    local dir="$1"
+    local name="$2"
+    
+    if [[ -z "$dir" || "$dir" != /* ]]; then
+        log_error "$name directory must be an absolute path: $dir"
+        return 1
+    fi
+    
+    if [[ "$dir" =~ \.\. ]]; then
+        log_error "$name directory cannot contain parent directory references: $dir"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Safe file operations with proper quoting
+safe_move() {
+    local src="$1"
+    local dest="$2"
+    
+    if [[ ! -e "$src" ]]; then
+        log_warn "Source file does not exist: $src"
+        return 1
+    fi
+    
+    mkdir -p "$(dirname "$dest")"
+    mv -f "$src" "$dest" || {
+        log_error "Failed to move $src to $dest"
+        return 1
+    }
+}
+
+safe_remove() {
+    local path="$1"
+    local name="$2"
+    
+    if [[ -z "$path" ]]; then
+        log_error "$name path is empty"
+        return 1
+    fi
+    
+    validate_directory "$path" "$name" || return 1
+    
+    if [[ -d "$path" ]]; then
+        rm -rf "$path"/* 2>/dev/null || {
+            log_warn "Could not clean $name directory: $path"
+        }
+    fi
+}
 
 # -------------------------
 # Configuration
@@ -16,6 +84,7 @@ logend=".log"
 sleeptime="${SLEEPTIME:-3m}"
 CPU_CORES="${CPU_CORES:-$(nproc)}"
 MAKE_BACKUP="${MAKE_BACKUP:-Y}"
+MAX_DIR_DEPTH=3  # Configurable directory depth for flattening
 
 # Normalize paths (remove trailing slashes for consistency)
 inputfolder="${inputfolder%/}/"
@@ -26,29 +95,33 @@ backupfolder="${backupfolder%/}/"
 binfolder="${binfolder%/}/"
 
 # -------------------------
+# Configuration Validation
+# -------------------------
+for dir_var in inputfolder outputfolder originalfolder fixitfolder backupfolder binfolder; do
+    validate_directory "${!dir_var}" "$dir_var" || exit 1
+done
+
+# -------------------------
 # Startup Info
 # -------------------------
-echo "==================================="
-echo "M4B-Tool Auto Processor"
-echo "==================================="
-echo "Input:       $inputfolder"
-echo "Output:      $outputfolder"
-echo "Original:    $originalfolder"
-echo "Backup:      $backupfolder"
-echo "Fix-it:      $fixitfolder"
-echo "Bin:         $binfolder"
-echo "Sleep:       $sleeptime"
-echo "CPU cores:   $CPU_CORES"
-echo "Make backup: $MAKE_BACKUP"
-echo "User:        $(id)"
-echo "==================================="
+log "M4B-Tool Auto Processor"
+log "Input:       $inputfolder"
+log "Output:      $outputfolder"
+log "Original:    $originalfolder"
+log "Backup:      $backupfolder"
+log "Fix-it:      $fixitfolder"
+log "Bin:         $binfolder"
+log "Sleep:       $sleeptime"
+log "CPU cores:   $CPU_CORES"
+log "Make backup: $MAKE_BACKUP"
+log "User:        $(id)"
 
 # -------------------------
 # Ensure folder structure
 # -------------------------
-echo "Creating folder structure..."
+log "Creating folder structure..."
 mkdir -p "$inputfolder" "$outputfolder" "$originalfolder" "$fixitfolder" "$backupfolder" "$binfolder" || {
-    echo "ERROR: Failed to create directories. Check volume permissions."
+    log_error "Failed to create directories. Check volume permissions."
     exit 1
 }
 
@@ -56,125 +129,164 @@ mkdir -p "$inputfolder" "$outputfolder" "$originalfolder" "$fixitfolder" "$backu
 # Main loop
 # -------------------------
 while true; do
-    echo ""
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting processing cycle..."
+    log "Starting processing cycle..."
 
     # -------------------------
     # Backup original folder
     # -------------------------
     if [ "$MAKE_BACKUP" == "N" ]; then
-        echo "Skipping backup (MAKE_BACKUP=N)"
+        log "Skipping backup (MAKE_BACKUP=N)"
     else
-        echo "Backing up $originalfolder -> $backupfolder"
+        log "Backing up $originalfolder -> $backupfolder"
         if compgen -G "${originalfolder}*" > /dev/null; then
-            cp -Ru "$originalfolder"* "$backupfolder" 2>/dev/null || echo "Backup completed with warnings"
+            cp -Ru "$originalfolder"* "$backupfolder" 2>/dev/null || log_warn "Backup completed with warnings"
         else
-            echo "Backup skipped: nothing to backup"
+            log "Backup skipped: nothing to backup"
         fi
     fi
 
     # -------------------------
-    # Organize single files into folders
+    # Organize single files into folders (atomic operations)
     # -------------------------
-    echo "Organizing single files into folders..."
+    log "Organizing single files into folders..."
     shopt -s nullglob
     for file in "$originalfolder"*.{mp3,m4b,m4a}; do
         if [[ -f "$file" ]]; then
             filename=$(basename "$file")
             folder="${originalfolder}${filename%.*}"
-            echo "Creating folder: $folder"
+            log "Creating folder: $folder"
             mkdir -p "$folder"
-            mv -v "$file" "$folder/"
+            safe_move "$file" "$folder/" || log_warn "Failed to move file: $file"
         fi
     done
     shopt -u nullglob
 
     # -------------------------
-    # Flatten deeply nested folders (>=3 levels)
+    # Flatten deeply nested folders (atomic operations with proper filename handling)
     # -------------------------
-    echo "Flattening nested folders..."
-    find "$originalfolder" -mindepth 3 -type f \( -iname '*.mp3' -o -iname '*.m4b' -o -iname '*.m4a' \) -print0 2>/dev/null |
+    log "Flattening nested folders..."
+    find "$originalfolder" -mindepth $MAX_DIR_DEPTH -type f \( -iname '*.mp3' -o -iname '*.m4b' -o -iname '*.m4a' \) -print0 2>/dev/null |
     while IFS= read -r -d '' file; do
         rel="${file#$originalfolder}"
-        IFS='/' read -ra parts <<< "$rel"
-        if [ ${#parts[@]} -ge 3 ]; then
-            filename="${parts[-1]}"
-            grandparent="${parts[0]}"
+        readarray -td / parts < <(printf '%s' "$rel")
+        parts=("$(basename "$originalfolder")" "${parts[@]}")
+        
+        if [ ${#parts[@]} -ge $((MAX_DIR_DEPTH + 1)) ]; then
+            filename=$(basename "$file")
+            grandparent="${parts[1]}"
+            
+            # Build new filename safely
             new_filename=""
-            for ((i=1;i<${#parts[@]}-1;i++)); do
-                new_filename+="${parts[i]} - "
+            for ((i=2;i<${#parts[@]}-1;i++)); do
+                if [[ -n "${parts[i]}" ]]; then
+                    new_filename+="${parts[i]} - "
+                fi
             done
             new_filename+="$filename"
+            
+            # Sanitize filename
+            new_filename=$(printf '%s' "$new_filename" | tr '/' '-')
             new_path="${originalfolder}${grandparent}/${new_filename}"
-            mkdir -p "$(dirname "$new_path")"
-            echo "Flattening: $file -> $new_path"
-            mv "$file" "$new_path" 2>/dev/null || echo "Warning: Could not move $file"
+            
+            log "Flattening: $file -> $new_path"
+            safe_move "$file" "$new_path" || log_warn "Failed to flatten file: $file"
         fi
     done
 
     # -------------------------
-    # Move multi-file audiobook folders to inputfolder
+    # Move multi-file audiobook folders to inputfolder (atomic)
     # -------------------------
-    echo "Moving multi-file audiobook folders to input..."
+    log "Moving multi-file audiobook folders to input..."
     find "$originalfolder" -maxdepth 2 -mindepth 2 -type f \( -iname '*.mp3' -o -iname '*.m4b' -o -iname '*.m4a' \) -print0 2>/dev/null |
     xargs -0 -r -n 1 dirname | sort | uniq -c | grep -E -v '^ *1 ' | sed 's/^ *[0-9]* //' |
     while read -r folder; do
-        echo "Moving folder: $folder -> $inputfolder"
-        mv "$folder" "$inputfolder" 2>/dev/null || echo "Warning: Could not move $folder"
+        if [[ -d "$folder" ]]; then
+            new_folder="${inputfolder}$(basename "$folder")"
+            log "Moving folder: $folder -> $new_folder"
+            safe_move "$folder" "$new_folder" || log_warn "Failed to move folder: $folder"
+        fi
     done
 
     # -------------------------
-    # Move single files to input/output
+    # Move single files to input/output (atomic)
     # -------------------------
-    echo "Moving single MP3 folders to merge folder..."
+    log "Moving single MP3 folders to merge folder..."
     find "$originalfolder" -maxdepth 2 -type f -iname '*.mp3' -printf "%h\0" 2>/dev/null |
-    sort -zu | xargs -0 -r -I {} mv -v {} "$inputfolder" 2>/dev/null || true
+    sort -zu | while IFS= read -r -d '' folder; do
+        if [[ -d "$folder" ]]; then
+            new_folder="${inputfolder}$(basename "$folder")"
+            log "Moving folder: $folder -> $new_folder"
+            safe_move "$folder" "$new_folder" || log_warn "Failed to move MP3 folder: $folder"
+        fi
+    done
 
-    echo "Moving single M4B/M4A/MP4/OGG folders to output..."
+    log "Moving single M4B/M4A/MP4/OGG folders to output..."
     find "$originalfolder" -maxdepth 2 -type f \( -iname '*.m4b' -o -iname '*.m4a' -o -iname '*.mp4' -o -iname '*.ogg' \) -printf "%h\0" 2>/dev/null |
-    sort -zu | xargs -0 -r -I {} mv -v {} "$outputfolder" 2>/dev/null || true
+    sort -zu | while IFS= read -r -d '' folder; do
+        if [[ -d "$folder" ]]; then
+            new_folder="${outputfolder}$(basename "$folder")"
+            log "Moving folder: $folder -> $new_folder"
+            safe_move "$folder" "$new_folder" || log_warn "Failed to move M4B/M4A folder: $folder"
+        fi
+    done
 
     # -------------------------
-    # Clear bin folder
+    # Clear bin folder (safe operation)
     # -------------------------
-    echo "Clearing bin folder..."
-    rm -rf "${binfolder}"* 2>/dev/null || true
+    log "Clearing bin folder..."
+    safe_remove "$binfolder" "bin"
 
     # -------------------------
-    # Process folders in inputfolder
+    # Process folders in inputfolder (atomic operations)
     # -------------------------
-    cd "$inputfolder" || exit
+    cd "$inputfolder" || {
+        log_error "Failed to change to input directory: $inputfolder"
+        exit 1
+    }
 
     if compgen -G "*/" > /dev/null; then
-        for book in */; do
-            book="${book%/}"
-            [[ -d "$book" ]] || continue
+        # Create list of folders to process first to avoid race conditions
+        folders_to_process=()
+        for book_folder in */; do
+            book_folder="${book_folder%/}"
+            if [[ -d "$book_folder" ]]; then
+                folders_to_process+=("$book_folder")
+            fi
+        done
 
-            echo ""
-            echo "Processing: $book"
-            mkdir -p "${outputfolder}${book}"
+        for book in "${folders_to_process[@]}"; do
+            if [[ ! -d "$book" ]]; then
+                log_warn "Folder disappeared during processing: $book"
+                continue
+            fi
+
+            log "Processing: $book"
+            output_dir="${outputfolder}${book}"
+            mkdir -p "$output_dir"
 
             # Find first audio file
             mpthree=$(find "$book" -maxdepth 2 -type f \( -iname '*.mp3' -o -iname '*.m4b' -o -iname '*.m4a' \) 2>/dev/null | head -n1)
 
             if [[ -z "$mpthree" ]]; then
-                echo "Warning: No audio files found in $book, skipping..."
+                log_warn "No audio files found in $book, moving to bin..."
+                safe_move "$book" "$binfolder" || log_warn "Failed to move empty folder: $book"
                 continue
             fi
 
-            m4bfile="${outputfolder}${book}/${book}${m4bend}"
-            logfile="${outputfolder}${book}/${book}${logend}"
+            m4bfile="${output_dir}/${book}${m4bend}"
+            logfile="${output_dir}/${book}${logend}"
+            processing_success=false
 
             # Determine bitrate if MP3
             if [[ "$mpthree" == *.mp3 ]]; then
-                echo "Detecting bitrate for MP3..."
+                log "Detecting bitrate for MP3..."
                 bit=$(ffprobe -hide_banner -loglevel error -of flat -i "$mpthree" -select_streams a -show_entries format=bit_rate -of default=noprint_wrappers=1:nokey=1 2>/dev/null || echo "64000")
                 bit=${bit%%.*}
                 [[ -z "$bit" || "$bit" -eq 0 ]] && bit=64000
-                echo "Detected bitrate: $bit"
+                log "Detected bitrate: $bit"
 
-                echo "Merging $book -> $m4bfile"
-                m4b-tool merge "$book" -n -q \
+                log "Merging $book -> $m4bfile"
+                if m4b-tool merge "$book" -n -q \
                     --audio-bitrate="$bit" \
                     --skip-cover \
                     --use-filenames-as-chapters \
@@ -182,39 +294,54 @@ while true; do
                     --audio-codec=libfdk_aac \
                     --jobs="$CPU_CORES" \
                     --output-file="$m4bfile" \
-                    --logfile="$logfile" || {
-                        echo "ERROR: m4b-tool merge failed for $book"
-                        continue
-                    }
+                    --logfile="$logfile"; then
+                    processing_success=true
+                    log "Merge completed successfully"
+                else
+                    log_error "m4b-tool merge failed for $book"
+                    continue
+                fi
             else
                 # Already an M4B/M4A, just copy
-                echo "File already in M4B/M4A format, copying..."
-                cp -v "$mpthree" "$m4bfile" || {
-                    echo "ERROR: Failed to copy $mpthree"
+                log "File already in M4B/M4A format, copying..."
+                if cp "$mpthree" "$m4bfile"; then
+                    processing_success=true
+                    log "Copy completed successfully"
+                else
+                    log_error "Failed to copy $mpthree"
                     continue
-                }
+                fi
             fi
 
             # -------------------------
-            # Generate chapters.txt
+            # Generate chapters.txt (with error handling)
             # -------------------------
-            if [[ -f "$m4bfile" ]]; then
-                echo "Generating chapters -> ${outputfolder}${book}/chapters.txt"
-                m4b-tool chapters "$m4bfile" > "${outputfolder}${book}/chapters.txt" 2>/dev/null || echo "Warning: Chapters generation failed"
+            if [[ -f "$m4bfile" && "$processing_success" == true ]]; then
+                log "Generating chapters -> ${output_dir}/chapters.txt"
+                if ! m4b-tool chapters "$m4bfile" > "${output_dir}/chapters.txt" 2>/dev/null; then
+                    log_warn "Chapters generation failed for $book"
+                    # Continue processing - chapters failure is not critical
+                fi
             fi
 
             # -------------------------
-            # Move processed folder to bin
+            # Move processed folder to bin (only if successful)
             # -------------------------
-            echo "Moving processed folder to bin..."
-            mv "${inputfolder}${book}" "$binfolder" 2>/dev/null || echo "Warning: Could not move to bin"
-
-            echo "✓ Completed: $book"
+            if [[ "$processing_success" == true && -f "$m4bfile" ]]; then
+                log "Moving processed folder to bin..."
+                if safe_move "$book" "$binfolder"; then
+                    log "✓ Completed: $book"
+                else
+                    log_error "Failed to move processed folder to bin: $book"
+                fi
+            else
+                log_error "Processing failed for $book, leaving folder in place"
+            fi
         done
     else
-        echo "No folders to process."
+        log "No folders to process."
     fi
 
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cycle complete. Sleeping $sleeptime..."
+    log "Cycle complete. Sleeping $sleeptime..."
     sleep "$sleeptime"
 done
