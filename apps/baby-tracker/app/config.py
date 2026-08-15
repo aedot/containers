@@ -93,6 +93,14 @@ class Config:
     summary_model: str = "gpt-oss:120b-cloud"
     summary_api_key: str = ""          # for anthropic/openai/gemini
     summary_prompt: str = DEFAULT_SUMMARY_PROMPT
+    # Weekly / monthly recap notifications (SDD-003 §5). Independent, opt-in
+    # extensions of the daily digest; both reuse summary_hour for the time of
+    # day. Weekly fires on summary_weekly_day over the prior 7 days; monthly on
+    # summary_monthly_day over the previous calendar month.
+    summary_weekly_enabled: bool = False
+    summary_weekly_day: str = "sun"    # APScheduler day_of_week (mon..sun)
+    summary_monthly_enabled: bool = False
+    summary_monthly_day: int = 1       # day of month (keep 1-28)
     # storage
     data_dir: Path = Path(os.environ.get("DATA_DIR", "/data"))
     database_url: str | None = None  # optional external Postgres (unused in v1 SQLite path)
@@ -155,6 +163,14 @@ class Config:
                              or env.get("SUMMARY_API_KEY") or ""),
             summary_prompt=(opts.get("summary_prompt") or env.get("SUMMARY_PROMPT")
                             or DEFAULT_SUMMARY_PROMPT),
+            summary_weekly_enabled=_as_bool(env.get("SUMMARY_WEEKLY_ENABLED")
+                                            or ("1" if opts.get("summary_weekly_enabled") else "0")),
+            summary_weekly_day=(opts.get("summary_weekly_day")
+                                or env.get("SUMMARY_WEEKLY_DAY") or "sun"),
+            summary_monthly_enabled=_as_bool(env.get("SUMMARY_MONTHLY_ENABLED")
+                                             or ("1" if opts.get("summary_monthly_enabled") else "0")),
+            summary_monthly_day=int(opts.get("summary_monthly_day",
+                                             env.get("SUMMARY_MONTHLY_DAY", 1))),
             data_dir=Path(env.get("DATA_DIR", "/data")),
             database_url=opts.get("database_url") or env.get("DATABASE_URL") or None,
             # Supervisor service (env vars exported by run.sh) is PRIMARY; the

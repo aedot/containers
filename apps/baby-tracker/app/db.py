@@ -246,6 +246,27 @@ class SqliteDatabase:
             out.append(d)
         return out
 
+    async def recent_since(self, since_iso: str) -> list[dict]:
+        """Most-recent-first rows with logged_at >= since_iso (unbounded count),
+        for the weekly/monthly summary windows. logged_at is stored as ISO-8601
+        UTC, so the lexicographic string compare matches chronological order."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT id, event_type, event_subtype, note, logged_at, value, value_unit "
+                "FROM baby_events WHERE logged_at >= ? ORDER BY logged_at DESC",
+                (since_iso,),
+            )
+            rows = await cur.fetchall()
+        out = []
+        for r in rows:
+            d = _clean_row(dict(r))
+            d["time"] = _fmt_time(d["logged_at"], self.tz)
+            out.append(d)
+        return out
+
     async def latest_of_type(self, event_type: str) -> dict | None:
         import aiosqlite
 
@@ -536,7 +557,8 @@ class SqliteDatabase:
 
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute(
-                "SELECT COUNT(*) FROM baby_summaries WHERE day = ?", (day,)
+                "SELECT COUNT(*) FROM baby_summaries "
+                "WHERE day = ? AND source NOT IN ('weekly', 'monthly')", (day,)
             )
             (n,) = await cur.fetchone()
         return int(n)
@@ -733,6 +755,25 @@ class PostgresDatabase:
                 "SELECT id, event_type, event_subtype, note, logged_at, value, value_unit "
                 "FROM baby_events ORDER BY logged_at DESC LIMIT $1",
                 limit,
+            )
+        out = []
+        for r in rows:
+            d = self._row_to_dict(r)
+            d["time"] = _fmt_time(d["logged_at"], self.tz)
+            out.append(d)
+        return out
+
+    async def recent_since(self, since_iso: str) -> list[dict]:
+        """Most-recent-first rows with logged_at >= since_iso (unbounded count),
+        for the weekly/monthly summary windows. logged_at is a timestamp column,
+        so the ISO string is parsed to a datetime for the comparison."""
+        since = _parse(since_iso)
+        pool = await self._get_pool()
+        async with pool.acquire() as con:
+            rows = await con.fetch(
+                "SELECT id, event_type, event_subtype, note, logged_at, value, value_unit "
+                "FROM baby_events WHERE logged_at >= $1 ORDER BY logged_at DESC",
+                since,
             )
         out = []
         for r in rows:
@@ -989,7 +1030,8 @@ class PostgresDatabase:
         pool = await self._get_pool()
         async with pool.acquire() as con:
             n = await con.fetchval(
-                "SELECT COUNT(*) FROM baby_summaries WHERE day = $1", day
+                "SELECT COUNT(*) FROM baby_summaries "
+                "WHERE day = $1 AND source NOT IN ('weekly', 'monthly')", day
             )
         return int(n)
 

@@ -1,5 +1,6 @@
-"""AI daily summaries (SDD-003): build a DE-IDENTIFIED digest of the day, run it
-through the configured LLM provider, and store/publish a warm recap.
+"""AI summaries (SDD-003): build a DE-IDENTIFIED digest of a period (daily,
+weekly, or monthly), run it through the configured LLM provider, and
+store/publish a warm recap.
 
 Privacy is enforced here: `build_digest` emits ONLY aggregate numbers and labels
 (counts, sleep, trends, last temp/weight) — never a note, special note, name, or
@@ -11,13 +12,16 @@ never receives identifiable data regardless of the prompt.
 """
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import logging
 import re
 from zoneinfo import ZoneInfo
 
 from . import display, i18n, llm
-from .stats import compute
+
+# Valid summary periods, longest window last.
+PERIODS = ("daily", "weekly", "monthly")
 
 # Bottle volume is logged as free text in the note (e.g. "55mL", "55 ml"). We
 # extract only the leading number, never the rest of the note.
@@ -88,61 +92,119 @@ def _local_time(cfg, now: dt.datetime) -> str:
     return f"{h}:{t.minute:02d} {'PM' if t.hour >= 12 else 'AM'}"
 
 
-async def build_digest(db, cfg, now: dt.datetime | None = None) -> dict:
-    """De-identified aggregate digest for the LLM. Numbers only, no free text."""
-    tz = ZoneInfo(cfg.timezone)
-    now = now or dt.datetime.now(dt.timezone.utc)
-    rows = await db.recent(500)
-    today = compute(rows, cfg.timezone, now)["stats"]
+def _fmt_hm(mins) -> str:
+    """"Xh Ym" — same shape the stats module uses for sleep totals."""
+    m = int(mins)
+    return f"{m // 60}h {m % 60}m"
 
+
+def _window(cfg, period: str, now: dt.datetime):
+    """(start, end, label, days) for the period, in the configured timezone.
+
+      daily   -> midnight today .. now              (1 day, partial)
+      weekly  -> the 7 whole days before today      (Sun run covers Sun..Sat)
+      monthly -> the previous calendar month
+    """
+    tz = ZoneInfo(cfg.timezone)
     now_local = now.astimezone(tz)
     today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    y_start = today_start - dt.timedelta(days=1)
+    if period == "weekly":
+        start, end = today_start - dt.timedelta(days=7), today_start
+        label = (f"{start.strftime('%b %d')}–"
+                 f"{(end - dt.timedelta(days=1)).strftime('%b %d')}")
+        return start, end, label, 7
+    if period == "monthly":
+        first_this = today_start.replace(day=1)
+        prev_last = first_this - dt.timedelta(days=1)   # last day of prev month
+        start = prev_last.replace(day=1)
+        return start, first_this, start.strftime("%B %Y"), prev_last.day
+    end = now_local + dt.timedelta(minutes=1)
+    return today_start, end, today_start.strftime("%b %d"), 1
+
+
+def _trend(count, sleep_fn, period, start, end, cap):
+    """Bucketed [{label, feeds, diapers, sleep_min}] giving the model the shape
+    of the period: daily -> 3 days ending today, weekly -> its 7 days, monthly
+    -> weekly buckets tiling the month."""
+    out = []
+    if period == "monthly":
+        b = start
+        while b < end:
+            be = min(b + dt.timedelta(days=7), end)
+            out.append({"label": b.strftime("%b %d"), "feeds": count("feed", b, be),
+                        "diapers": count("diaper", b, be), "sleep_min": sleep_fn(b, be)})
+            b = be
+        return out
+    if period == "weekly":
+        first, n = start, 7
+    else:  # daily: 3 days ending today (2 look-back days for context)
+        first, n = end.replace(hour=0, minute=0, second=0, microsecond=0) \
+            - dt.timedelta(days=2), 3
+    for i in range(n):
+        d0 = first + dt.timedelta(days=i)
+        d1 = min(d0 + dt.timedelta(days=1), cap)
+        out.append({"label": d0.strftime("%b %d"), "feeds": count("feed", d0, d1),
+                    "diapers": count("diaper", d0, d1), "sleep_min": sleep_fn(d0, d1)})
+    return out
+
+
+async def build_digest(db, cfg, now: dt.datetime | None = None,
+                       period: str = "daily") -> dict:
+    """De-identified aggregate digest for the LLM over `period`. Numbers only,
+    no free text. Keys are named `*_today` for continuity with the daily path,
+    but hold the period total; `label`/`days`/`period` carry the scope."""
+    tz = ZoneInfo(cfg.timezone)
+    now = now or dt.datetime.now(dt.timezone.utc)
+    start, end, label, days = _window(cfg, period, now)
+
+    # The daily path keeps its cheap fixed LIMIT; longer periods fetch by range
+    # (one extra look-back day so the daily trend's context days are covered).
+    if period == "daily":
+        rows = await db.recent(500)
+    else:
+        since = (start - dt.timedelta(days=1)).astimezone(dt.timezone.utc).isoformat()
+        rows = await db.recent_since(since)
 
     def local(r):
         return _parse(r["logged_at"]).astimezone(tz)
 
-    def count(etype, start, end, sub=None):
+    def count(etype, a, b, sub=None):
         return sum(1 for r in rows if r["event_type"] == etype
-                   and start <= local(r) < end
+                   and a <= local(r) < b
                    and (sub is None or r.get("event_subtype") == sub))
 
-    today_end = now_local + dt.timedelta(minutes=1)
-
-    # feed subtype breakdown (today)
-    feed_breakdown = {s: count("feed", today_start, today_end, s)
+    # feed subtype breakdown over the window
+    feed_breakdown = {s: count("feed", start, end, s)
                       for s in ("breast", "bottle", "solid")}
 
-    # total feed volume today (mL), parsed from the "NNmL" note; only the summed
-    # number is kept, never the note text.
+    # total feed volume (mL) over the window, parsed from the "NNmL" note; only
+    # the summed number is kept, never the note text.
     feed_volume_ml = 0.0
     for r in rows:
-        if r["event_type"] == "feed" and today_start <= local(r) < today_end:
+        if r["event_type"] == "feed" and start <= local(r) < end:
             ml = _note_ml(r.get("note"))
             if ml is not None:
                 feed_volume_ml += ml
 
-    # diaper subtype breakdown today (pee / poop / both / change)
-    diaper_breakdown = {s: count("diaper", today_start, today_end, s)
+    # diaper subtype breakdown over the window (pee / poop / both / change)
+    diaper_breakdown = {s: count("diaper", start, end, s)
                         for s in ("pee", "poop", "both", "change")}
 
-    # 3-day rolling view (oldest first): feeds / diapers / sleep per day, so the
-    # model sees the trend, not just today.
-    days_3 = []
-    for i in range(2, -1, -1):
-        d_start = today_start - dt.timedelta(days=i)
-        d_end = d_start + dt.timedelta(days=1)
-        cap = (now_local + dt.timedelta(minutes=1)) if i == 0 else d_end
-        days_3.append({
-            "label": d_start.strftime("%b %d"),
-            "feeds": count("feed", d_start, cap),
-            "diapers": count("diaper", d_start, cap),
-            "sleep_min": _sleep_minutes(rows, d_start, d_end, now),
-        })
+    # currently sleeping = the latest sleep event in range is an unmatched start.
+    # Only meaningful for the daily digest (end == now); for weekly/monthly `end`
+    # is a past boundary, so "currently sleeping" would be a stale claim — force
+    # it False there rather than report last week's midnight sleep as "now".
+    sleep_evs = sorted((r for r in rows if r["event_type"] == "sleep"
+                        and local(r) < end), key=lambda r: _parse(r["logged_at"]))
+    is_sleeping = (period == "daily" and bool(sleep_evs)
+                   and sleep_evs[-1].get("event_subtype") == "start")
 
-    # average feed gap today (minutes)
+    trend = _trend(count, lambda a, b: _sleep_minutes(rows, a, b, now),
+                   period, start, end, end)
+
+    # average feed gap over the window (minutes)
     feed_ts = sorted(local(r).timestamp() for r in rows
-                     if r["event_type"] == "feed" and today_start <= local(r))
+                     if r["event_type"] == "feed" and start <= local(r) < end)
     avg_feed_gap = None
     if len(feed_ts) >= 2:
         gaps = [(feed_ts[i + 1] - feed_ts[i]) / 60.0 for i in range(len(feed_ts) - 1)]
@@ -167,45 +229,55 @@ async def build_digest(db, cfg, now: dt.datetime | None = None) -> dict:
             growth[m] = {"value": last["value"], "unit": last.get("value_unit"), "delta": delta}
 
     return {
-        "feeds_today": today["feeds_today"],
+        "period": period,
+        "label": label,
+        "days": days,
+        "feeds_today": count("feed", start, end),
         "feeds_by": feed_breakdown,
         "feed_volume_ml": round(feed_volume_ml) or None,
-        "days_3": days_3,
+        "trend": trend,
         "avg_feed_gap_min": avg_feed_gap,
-        "diapers_today": today["diapers_today"],
+        "diapers_today": count("diaper", start, end),
         "diapers_by": diaper_breakdown,
-        "sleep_today": today["sleep_total_today"],
-        "is_sleeping": today["is_sleeping"],
-        "pumps_today": today["pumps_today"],
-        "baths_today": today["baths_today"],
-        "tummy_today": today["tummy_times_today"],
-        "medicines_today": today["medicines_today"],
-        "contractions_today": today.get("contractions_today", 0),
+        "sleep_today": _fmt_hm(_sleep_minutes(rows, start, end, now)),
+        "is_sleeping": is_sleeping,
+        "pumps_today": count("pump", start, end),
+        "baths_today": count("bath", start, end),
+        "tummy_today": count("tummy_time", start, end),
+        "medicines_today": count("medicine", start, end),
+        "contractions_today": count("contraction", start, end),
         "last_temp": last_temp,
         "growth": growth,
     }
 
 
 def render_digest(d: dict) -> str:
+    daily = d.get("period", "daily") == "daily"
+    when = "today" if daily else f"over {d.get('label', '')}"
+    days = d.get("days", 1) or 1
+
+    def avg(n):
+        return "" if daily else f" (avg {round(n / days)}/day)"
+
     lines = []
     fb = d["feeds_by"]
     parts = [f"{k} {v}" for k, v in fb.items() if v]
-    lines.append(f"Feeds today: {d['feeds_today']}"
+    lines.append(f"Feeds {when}: {d['feeds_today']}{avg(d['feeds_today'])}"
                  + (f" ({', '.join(parts)})" if parts else ""))
     if d.get("feed_volume_ml"):
-        lines.append(f"Total feed volume today: {d['feed_volume_ml']} mL")
+        lines.append(f"Total feed volume {when}: {d['feed_volume_ml']} mL")
     if d["avg_feed_gap_min"] is not None:
-        lines.append(f"Average gap between feeds today: {d['avg_feed_gap_min']} min")
+        lines.append(f"Average gap between feeds {when}: {d['avg_feed_gap_min']} min")
     db_ = d.get("diapers_by") or {}
     dparts = [f"{k} {v}" for k, v in db_.items() if v]
-    lines.append(f"Diapers today: {d['diapers_today']}"
+    lines.append(f"Diapers {when}: {d['diapers_today']}{avg(d['diapers_today'])}"
                  + (f" ({', '.join(dparts)})" if dparts else ""))
-    lines.append(f"Sleep today: {d['sleep_today']}"
+    lines.append(f"Sleep {when}: {d['sleep_today']}"
                  + (" (currently sleeping)" if d["is_sleeping"] else ""))
     lines.append(f"Pumps {d['pumps_today']}, baths {d['baths_today']}, "
                  f"tummy time {d['tummy_today']}, medicines {d['medicines_today']}")
     if d["contractions_today"]:
-        lines.append(f"Contractions today: {d['contractions_today']}")
+        lines.append(f"Contractions {when}: {d['contractions_today']}")
     if d["last_temp"]:
         t = d["last_temp"]
         lines.append(f"Last temperature: {_fmt(t['value'])} {t['unit']}"
@@ -215,46 +287,133 @@ def render_digest(d: dict) -> str:
         delta = f" (change {'+' if (g['delta'] or 0) >= 0 else ''}{_fmt(g['delta'])} {g['unit']})" \
             if g["delta"] is not None else ""
         lines.append(f"{labels[k]}: {_fmt(g['value'])} {g['unit']}{delta}")
-    if d.get("days_3"):
+    if d.get("trend"):
         trend = ", ".join(f"{x['label']} {x['feeds']}f/{x['diapers']}d/{_hm(x['sleep_min'])}"
-                          for x in d["days_3"])
-        lines.append(f"Last 3 days (feeds/diapers/sleep): {trend}")
+                          for x in d["trend"])
+        lines.append(f"Trend (feeds/diapers/sleep): {trend}")
+    return "\n".join(lines)
+
+
+def stats_footer(cfg, digest: dict) -> str:
+    """Deterministic tally of the day's headline numbers, appended to the recap
+    so the exact counts ALWAYS appear regardless of whether the LLM echoes them.
+
+    Built from the same de-identified digest, localized to the device language
+    (same as the recap) via the shared catalog, with zero/empty categories
+    dropped. Returns "" when there is nothing to show, so a quiet day appends
+    no footer at all."""
+    lang = display.device_lang(cfg)
+    dd = getattr(cfg, "data_dir", None)
+    daily = digest.get("period", "daily") == "daily"
+    days = digest.get("days", 1) or 1
+
+    def L(key: str, **v) -> str:
+        return i18n.t(key, lang, dd, **v)
+
+    def avg(total) -> str:
+        """" (avg N/day)" for a multi-day period, "" for the daily digest."""
+        return "" if daily else f" ({L('sum.avgPerDay', n=round(total / days))})"
+
+    def tally(total, by: dict, order) -> str:
+        """"<total>[ (avg N/day)] (<label n> · <label n>)", 0s dropped."""
+        parts = [f"{L('btn.' + k)} {by[k]}" for k in order if by.get(k)]
+        return f"{total}{avg(total)}" + (f" ({' · '.join(parts)})" if parts else "")
+
+    lines = []
+    if digest.get("feeds_today"):
+        feed = (f"🍼 {L('group.feed')} "
+                + tally(digest["feeds_today"], digest.get("feeds_by") or {},
+                        ("breast", "bottle", "solid")))
+        if digest.get("feed_volume_ml"):
+            feed += f" · {digest['feed_volume_ml']} mL"
+        lines.append(feed)
+    if digest.get("diapers_today"):
+        lines.append(f"🚼 {L('group.diaper')} "
+                     + tally(digest["diapers_today"], digest.get("diapers_by") or {},
+                             ("pee", "poop", "both", "change")))
+    if digest.get("sleep_today"):
+        sleep = f"😴 {L('journal.sleep')} {digest['sleep_today']}"
+        if digest.get("is_sleeping"):
+            sleep += f" ({L('sum.asleep')})"
+        lines.append(sleep)
+    # Secondary counts on one line, each shown only when non-zero.
+    extra = [("stat.pumps", digest.get("pumps_today")),
+             ("stat.baths", digest.get("baths_today")),
+             ("stat.tummy", digest.get("tummy_today")),
+             ("stat.meds", digest.get("medicines_today")),
+             ("stat.contractions", digest.get("contractions_today"))]
+    ep = [f"{L(k)} {n}" for k, n in extra if n]
+    if ep:
+        lines.append("• " + " · ".join(ep))
     return "\n".join(lines)
 
 
 def build_prompt(cfg, digest: dict) -> str:
-    """The instruction, the (optional) output-language line, then the digest.
+    """The instruction, the (optional) period + output-language lines, then the
+    digest.
 
-    The language line is APPENDED, never substituted, so the configured prompt
+    Both extra lines are APPENDED, never substituted, so the configured prompt
     body survives untouched — including its "do not use em-dashes" instruction,
-    which measurably changes the output. English appends nothing at all, so a
-    default install sends a byte-identical prompt to the pre-i18n releases.
+    which measurably changes the output. A DAILY English digest appends nothing
+    at all, so a default install sends a byte-identical prompt to the pre-i18n
+    releases; weekly/monthly add one scope-setting line.
     """
     prompt = cfg.summary_prompt
     lang = display.device_lang(cfg)
+    period = digest.get("period", "daily")
+    if period != "daily":
+        span = "the last 7 days" if period == "weekly" else "the previous month"
+        prompt = (f"{prompt}\nThis is a {period} summary covering {span}; recap the "
+                  f"overall trends across the whole period, not a single day.")
     if lang != "en":
         prompt = f"{prompt}\nRespond in {i18n.english_name(lang)}."
     return f"{prompt}\n\nRecent activity:\n{render_digest(digest)}"
 
 
-async def generate(db, cfg, mqtt=None, install_token: str | None = None,
-                   source: str = "manual", now: dt.datetime | None = None) -> dict | None:
-    """Run one summary. Returns the stored row, or None when disabled.
+def _alert_title(cfg, period: str) -> str:
+    """Localized notification title for the period (daily/weekly/monthly)."""
+    key = {"weekly": "alert.summaryWeekly",
+           "monthly": "alert.summaryMonthly"}.get(period, "alert.summaryDaily")
+    return i18n.t(key, display.device_lang(cfg), getattr(cfg, "data_dir", None))
 
-    Raises `CapReached` when the local daily cap is used up, or `llm.CapError` /
-    `llm.ProviderError` on provider issues (the caller maps these to responses).
+
+async def generate(db, cfg, mqtt=None, install_token: str | None = None,
+                   source: str = "manual", now: dt.datetime | None = None,
+                   period: str = "daily") -> dict | None:
+    """Run one summary for `period` (daily/weekly/monthly). Returns the stored
+    row, or None when disabled.
+
+    Raises `CapReached` when the local daily cap is used up (daily only), or
+    `llm.CapError` / `llm.ProviderError` on provider issues (the caller maps
+    these to responses).
     """
     if not cfg.summary_enabled:
         return None
     now = now or dt.datetime.now(dt.timezone.utc)
     day = _day(cfg, now)
-    if await db.count_summaries_today(day) >= cfg.summary_daily_cap:
+    # The 2/day cap guards the on-demand daily digest; the scheduled weekly and
+    # monthly recaps fire at most once per week/month and are not capped.
+    if period == "daily" and await db.count_summaries_today(day) >= cfg.summary_daily_cap:
         raise CapReached(day)
-    digest = await build_digest(db, cfg, now)
+    digest = await build_digest(db, cfg, now, period)
     text = (await llm.generate(cfg, build_prompt(cfg, digest), install_token)) or ""
     text = text.strip() or "No summary available."
+    # Append the exact period tally to the recap so the numbers always appear in
+    # the stored summary, the retained sensor, AND the phone alert alike.
+    footer = stats_footer(cfg, digest)
+    if footer:
+        text = f"{text}\n\n{footer}"
     row = await db.insert_summary(text, cfg.summary_provider, source, day)
     if mqtt is not None:
         await mqtt.publish_summary(text, _local_time(cfg, now), source)
-    log.info("summary[%s] via %s: %s", source, cfg.summary_provider, text[:80])
+        # Every SCHEDULED recap (daily/weekly/monthly) rides the unified
+        # baby/alert bus so HA automations can push it to phones/email — the same
+        # delivery path fever and feed/pump reminders already use. Manual
+        # "generate" runs from the UI stay quiet (retained sensor only), so
+        # tapping generate never fires a phone notification.
+        if source != "manual":
+            with contextlib.suppress(Exception):
+                await mqtt.publish_alert("summary", _alert_title(cfg, period),
+                                         text, {"period": period})
+    log.info("summary[%s/%s] via %s: %s", source, period, cfg.summary_provider, text[:80])
     return row
