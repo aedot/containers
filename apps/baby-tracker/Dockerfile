@@ -5,7 +5,7 @@
 # the upstream release pipeline. Source of truth for the app remains
 # github.com/hms-homelab/hms-baby-tracker; changes are vendored here on purpose.
 
-FROM python:3.14-slim
+FROM python:3.12-slim
 
 ARG VERSION
 LABEL org.opencontainers.image.version="${VERSION}"
