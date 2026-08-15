@@ -1,0 +1,967 @@
+:root {
+  /* "Nocturnal nursery" tokens, shared with the Baby Remote app. */
+  --bg: #14131A;
+  --surface: #1E1C26;
+  --surface-2: #211E2A;
+  --raised: #272430;
+  --sheet: #1A1822;
+  --ink: #F2EFF7;
+  --muted: #9A95A8;
+  --faint: #6C6779;
+  --line: #2E2B38;
+  --line-2: #322B3E;
+  --glow: #FFB877;
+  --glow-deep: #C98A52;
+  --good: #5BD6A0;
+  --disp: "Bricolage Grotesque", sans-serif;
+  --ui: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(120% 50% at 50% -6%, rgba(255, 184, 119, 0.07), transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 14px 14px 36px;
+}
+
+.app-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 14px;
+}
+.app-head h1 {
+  font-family: var(--disp);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.status {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--faint);
+  min-height: 14px;
+  text-align: right;
+  letter-spacing: 0.02em;
+}
+.status.err { color: #e89b8b; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 15px;
+  margin-bottom: 14px;
+}
+
+/* Summary = the nightlight hero */
+.summary {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  background: linear-gradient(165deg, #241F2E, #1A1822);
+}
+.summary::before {
+  content: "";
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  left: 50%;
+  top: -140px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(255, 184, 119, 0.24), rgba(255, 184, 119, 0.05) 46%, transparent 70%);
+  pointer-events: none;
+}
+.summary .sum-line {
+  position: relative;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+/* Today stat cards (redesigned summary: issue #1 follow-up). Icon chip + big
+   value + small caption, reusing the .tile icon-chip language; chips below
+   replace the old cramped pipe-separated text lines. */
+.summary .stat-grid { position: relative; margin-bottom: 12px; }
+.summary .stat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.summary .stat-wide { margin-bottom: 13px; }
+/* display:flex above beats the UA [hidden] rule, so hiding a stat row via
+   hidden_modules (SDD-005) needs this back. Same for .grid and .tab below. */
+.summary .stat[hidden] { display: none; }
+.summary .stat-ico {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  line-height: 1;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.summary .stat-text { min-width: 0; }
+.summary .stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.summary .stat-value {
+  font-family: var(--disp);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.summary .stat-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary .chip-row {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.summary .chip-row:last-of-type { margin-bottom: 0; }
+.summary .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.summary .chip:active { transform: translateY(1px); opacity: 0.8; }
+.summary .chip b { color: var(--ink); font-weight: 700; }
+.summary .chip.warn { background: rgba(232, 168, 78, 0.12); border-color: rgba(232, 168, 78, 0.34); color: var(--glow); }
+.summary .chip.warn b { color: var(--glow); }
+
+/* A stat promoted (tap a chip) from the tray into the same card format as
+   Last feed / Last diaper / Asleep. Tap again to send it back. */
+.summary .stat.clickable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.summary .stat.clickable:active { transform: translateY(1px); opacity: 0.8; }
+/* An odd last pinned stat spans both columns instead of a half-empty row. */
+#sum-extra .stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+/* Section labels = mono eyebrows */
+.group-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--faint);
+  font-weight: 500;
+  margin: 16px 2px 10px;
+}
+.group-title:first-child { margin-top: 2px; }
+.group-title .hint {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--faint);
+}
+
+/* Tile grids */
+.grid { display: grid; gap: 9px; }
+.grid[hidden] { display: none; }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+/* Dark "remote key": dark surface, the event color drives the icon chip. */
+.tile {
+  --accent: var(--glow);
+  min-height: 84px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px 6px;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.tile .ico {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  line-height: 1;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 36%, transparent);
+}
+.tile .lbl { font-size: 12px; font-weight: 700; line-height: 1; color: var(--ink); }
+.tile.pressed { transform: translateY(2px); opacity: 0.8; }
+
+/* Inputs (notes + manual entry) */
+.note-row, .manual-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.note-row:last-child, .manual-row:last-child { margin-bottom: 0; }
+.note-row input,
+.manual-row select,
+.manual-row input[type="datetime-local"],
+.manual-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 11px;
+  padding: 11px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #0F0E14;
+  color: var(--ink);
+  color-scheme: dark;
+}
+.note-row input::placeholder, .manual-row input::placeholder { color: var(--faint); }
+.note-row input:focus, .manual-row select:focus, .manual-row input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--glow) 50%, transparent);
+}
+
+.btn-save {
+  border: none;
+  border-radius: 11px;
+  padding: 0 16px;
+  font-family: var(--disp);
+  font-size: 14px;
+  font-weight: 800;
+  background: var(--glow);
+  color: #1A1018;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 0 var(--glow-deep);
+}
+.btn-save:active { transform: translateY(2px); box-shadow: none; }
+.btn-special { background: #E8C66B; box-shadow: 0 2px 0 #A8842F; }
+
+/* Journal timeline */
+.journal-list { list-style: none; margin: 0; padding: 0; }
+.journal-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.journal-list li:last-child { border-bottom: none; }
+.journal-list li.editable { cursor: pointer; }
+.journal-list li.open { background: #0F0E14; border-radius: 10px; padding-left: 8px; padding-right: 8px; }
+.j-label { flex: 1; min-width: 0; font-weight: 600; }
+.j-note {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 2px;
+  word-break: break-word;
+}
+.j-time {
+  font-family: var(--mono);
+  color: var(--faint);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.journal-empty { color: var(--muted); font-size: 14px; padding: 10px 2px; }
+
+/* Inline row editor */
+.j-edit {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.j-edit input[type="datetime-local"],
+.j-edit input[type="text"] {
+  flex: 1 1 100%;
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 11px;
+  padding: 10px 11px;
+  font-size: 14px;
+  font-family: var(--mono);
+  background: var(--surface);
+  color: var(--ink);
+  color-scheme: dark;
+}
+.j-edit input[type="text"] { font-family: inherit; }
+.j-edit button {
+  flex: 1;
+  border: none;
+  border-radius: 11px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.j-edit .j-save { background: color-mix(in srgb, var(--glow) 14%, transparent); color: var(--glow); border: 1px solid color-mix(in srgb, var(--glow) 30%, transparent); }
+.j-edit .j-del { background: rgba(232, 155, 139, 0.12); color: #E89B8B; border: 1px solid rgba(232, 155, 139, 0.3); }
+.j-edit .j-cancel { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.j-edit button:active { transform: translateY(1px); opacity: 0.9; }
+
+/* Footer */
+.foot { text-align: center; margin-top: 6px; }
+.btn-reset {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 12px;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.btn-reset:active { opacity: 0.7; }
+
+/* ============ Tabs (SDD-002) ============ */
+.tabs {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 2px 12px;
+  margin: 0 -2px;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.tab.active {
+  color: #1A1822;
+  background: linear-gradient(180deg, var(--glow), var(--glow-deep));
+  border-color: transparent;
+}
+.tab:disabled { opacity: 0.5; cursor: default; }
+.tab[hidden] { display: none; }
+.tab .soon {
+  font-size: 8px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--glow) 18%, transparent);
+  color: var(--glow);
+}
+.panel[hidden] { display: none; }
+
+/* ============ Contractions ============ */
+.ctx-readout {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--glow);
+  background: color-mix(in srgb, var(--glow) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--glow) 22%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 13px;
+}
+.ctx-grid { grid-template-columns: repeat(3, 1fr); }
+.ctx-tile { min-height: 108px; }
+.ctx-tile .ico { width: 52px; height: 52px; font-size: 26px; border-radius: 15px; }
+.ctx-tile .lbl { font-size: 14px; }
+
+/* ============ Supplies ============ */
+.manual-row input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 11px;
+  padding: 11px 12px;
+  font-size: 14px;
+  font-family: var(--mono);
+  background: var(--surface);
+  color: var(--ink);
+}
+.manual-row .cb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.manual-row .cb input { width: 18px; height: 18px; accent-color: var(--glow); }
+.supply-list { list-style: none; margin: 0; padding: 0; }
+.supply-row {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+}
+.supply-row:last-child { margin-bottom: 0; }
+.supply-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.supply-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+.supply-qty { font-family: var(--mono); font-size: 14px; color: var(--glow); white-space: nowrap; }
+.supply-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-family: var(--mono);
+}
+.badge.low { background: rgba(224, 107, 107, 0.16); color: #e88b8b; border: 1px solid rgba(224, 107, 107, 0.34); }
+.badge.due { background: rgba(232, 168, 78, 0.16); color: var(--glow); border: 1px solid rgba(232, 168, 78, 0.34); }
+.badge.muted { background: transparent; color: var(--faint); border: 1px solid var(--line-2); }
+.supply-actions { display: flex; gap: 7px; margin-top: 11px; }
+.supply-btn {
+  flex: 1;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 9px 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.supply-btn.s-minus, .supply-btn.s-plus { flex: 0 0 44px; font-size: 17px; }
+.supply-btn.s-refill { color: var(--glow); border-color: color-mix(in srgb, var(--glow) 30%, transparent); }
+.supply-btn.s-del { color: #e89b8b; border-color: rgba(232, 155, 139, 0.3); }
+.supply-btn:active { transform: translateY(1px); opacity: 0.9; }
+
+/* ============ Get Ready checklist ============ */
+.checklist { list-style: none; margin: 0 0 12px; padding: 0; }
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.check-row:last-child { border-bottom: none; }
+.check-row input[type="checkbox"] {
+  width: 21px;
+  height: 21px;
+  accent-color: var(--good);
+  flex: 0 0 auto;
+}
+.check-label { flex: 1; font-size: 15px; color: var(--ink); }
+.check-row.done .check-label { color: var(--faint); text-decoration: line-through; }
+.check-del {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.check-del:active { color: #e89b8b; }
+
+/* ============ Health ============ */
+.hx-readout {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.hx-readout.fever {
+  color: #e88b8b;
+  background: rgba(224, 107, 107, 0.1);
+  border-color: rgba(224, 107, 107, 0.34);
+  font-weight: 700;
+}
+
+/* ============ Growth ============ */
+.metric-row {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 13px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+}
+.metric-row:last-child { margin-bottom: 0; }
+.metric-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.metric-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+.metric-val { font-family: var(--mono); font-size: 14px; color: var(--glow); white-space: nowrap; }
+.metric-hint { font-size: 11px; color: var(--faint); margin-top: 6px; }
+.spark {
+  display: block;
+  width: 100%;
+  height: 42px;
+  margin-top: 10px;
+  color: var(--glow);
+  overflow: visible;
+}
+
+/* ============ Shared note bar ============ */
+.star-toggle {
+  flex: 0 0 auto;
+  width: 46px;
+  border: 1px solid var(--line-2);
+  background: #0F0E14;
+  color: var(--faint);
+  border-radius: 11px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.star-toggle.on {
+  color: #E8C66B;
+  border-color: color-mix(in srgb, #E8C66B 45%, transparent);
+  background: rgba(232, 198, 107, 0.1);
+}
+.star-toggle:active { transform: translateY(1px); }
+
+/* Summary alert strip (fever / low supply / refill due) */
+.summary .sum-alert {
+  color: var(--glow);
+  font-weight: 700;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--glow) 22%, transparent);
+}
+.summary .sum-alert[hidden] { display: none; }
+
+/* ============ AI daily summary (in the summary card) ============ */
+.summary .sum-ai {
+  position: relative;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--glow) 20%, transparent);
+}
+.ai-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.ai-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+.ai-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  letter-spacing: 0.02em;
+}
+.ai-btn {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--glow) 32%, transparent);
+  background: color-mix(in srgb, var(--glow) 12%, transparent);
+  color: var(--glow);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ai-btn:disabled { opacity: 0.45; cursor: default; }
+.ai-btn:not(:disabled):active { transform: translateY(1px); }
+
+/* First-run AI privacy notice */
+.ai-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: color-mix(in srgb, var(--glow) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--glow) 30%, transparent);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.ai-notice strong { color: var(--ink); font-weight: 700; }
+.ai-notice button {
+  flex: 0 0 auto;
+  align-self: center;
+  border: none;
+  background: var(--glow);
+  color: #1A1018;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-family: var(--disp);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ai-notice[hidden] { display: none; }
+.ai-notice a { color: var(--glow); text-decoration: underline; cursor: pointer; font-weight: 700; }
+
+/* ── Language picker (SDD-004) ─────────────────────────────────────────────
+   Lives in the header so it is reachable from every tab without scrolling: a
+   user who lands in a language they cannot read should not have to scroll past
+   six tabs of unreadable buttons to get out. */
+.app-head { gap: 10px; }
+.app-head .status { flex: 1 1 auto; }
+.lang { position: relative; flex: none; }
+.lang-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--raised);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 5px 9px 5px 10px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+}
+.lang-btn:hover { border-color: var(--glow-deep); }
+.lang-caret { font-size: 9px; color: var(--faint); }
+.lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 210px;
+  background: var(--sheet);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  padding: 5px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+}
+.lang-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: var(--ui);
+  font-size: 14px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.lang-item:hover { background: var(--raised); }
+.lang-item.sel { background: color-mix(in srgb, var(--glow) 18%, transparent); }
+.lang-sub {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  letter-spacing: 0.04em;
+}
+.lang-item.lang-edit {
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  color: var(--glow);
+}
+
+/* ── Translation editor (SDD-004 §3.9) ─────────────────────────────────── */
+.ed-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(10, 9, 14, 0.72);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+/* `display: flex` outranks the hidden attribute's UA `display: none`, so
+   without this the modal is open on every page load. */
+.ed-modal[hidden] { display: none; }
+.ed-sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  /* `vh` on mobile is measured against the viewport with the browser toolbar
+     COLLAPSED, so a 92vh sheet is taller than what you can actually see and its
+     footer (Save / Export) hides behind the URL bar. `dvh` tracks the real
+     visible height; the vh line stays as the fallback for older engines. */
+  max-height: 92vh;
+  max-height: 92dvh;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: 16px 16px 0 0;
+  /* Keep the footer clear of the iOS home indicator. */
+  padding: 14px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.ed-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+.ed-lang {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--disp);
+  font-size: 18px;
+  font-weight: 700;
+}
+.ed-close {
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ed-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+}
+.ed-pill.warn { color: var(--glow); border-color: var(--glow-deep); }
+
+.ed-progress { display: flex; flex-direction: column; gap: 6px; }
+.ed-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--line);
+  overflow: hidden;
+}
+.ed-bar i { background: var(--good); }
+.ed-bar u { background: var(--glow); }
+.ed-legend {
+  display: flex;
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+}
+.ed-legend span { display: flex; align-items: center; gap: 5px; }
+.ed-legend b { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+.ed-legend .sw-done { background: var(--good); }
+.ed-legend .sw-machine { background: var(--glow); }
+.ed-legend .sw-missing { background: var(--line-2); }
+
+.ed-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 0 4px; }
+.ed-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ed-chip.on { background: var(--glow); border-color: var(--glow); color: #1A1520; }
+
+/* `min-height: 0` is load-bearing: a flex item defaults to min-height:auto and
+   refuses to shrink below its content, so without it this list does not scroll,
+   it just grows and shoves the footer (Save / Export JSON) off the sheet. */
+.ed-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 2px 8px;
+}
+/* Never let the actions scroll away with the list. */
+.ed-foot { flex: none; }
+.ed-head, .ed-progress, .ed-filters { flex: none; }
+.ed-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  padding: 14px 0 6px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.ed-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 1.15fr;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 0;
+}
+.ed-key {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.ed-src { font-size: 13px; color: var(--muted); }
+.ed-src em, .ed-input em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: color-mix(in srgb, var(--glow) 18%, transparent);
+  color: var(--glow);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.ed-input { display: flex; align-items: center; gap: 6px; }
+.ed-input input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 13px;
+}
+.ed-row.dev .ed-input input { font-family: var(--mono); font-size: 12px; }
+.ed-row.bad .ed-input input { border-color: #e07b7b; background: rgba(224, 107, 107, 0.1); }
+.ed-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  flex: none;
+}
+.ed-count.ok { color: var(--good); }
+.ed-count.over { background: #c04545; color: #fff; }
+.ed-err {
+  font-size: 11px;
+  color: #e89b8b;
+  padding: 0 0 6px 160px;
+}
+
+.ed-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.ed-msg.err { color: #e89b8b; }
+.ed-foot .btn-save[disabled] { opacity: 0.4; pointer-events: none; }
+
+/* Save is the primary action, so it must not be the smallest control in the
+   row. The two secondary buttons wrap to two lines on a phone and were ending
+   up physically larger than the thing you actually press. Equal widths, with
+   Save given the extra weight. */
+.ed-foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.25fr;
+  gap: 8px;
+  align-items: stretch;
+}
+/* Layout only. Type, colour, radius and the 2px drop-shadow stay inherited from
+   .btn-save / .btn-reset so these match every other button in the app: an
+   earlier version re-declared font-weight here and silently made the primary
+   action LIGHTER (700) than the house style (800). */
+.ed-foot .btn-reset,
+.ed-foot .btn-save {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.15;
+}
+/* .btn-reset is the only one that may wrap, so it alone relaxes nowrap. */
+.ed-foot .btn-reset { padding: 8px 10px; white-space: normal; }
+/* The status line sits above the buttons rather than competing for width. */
+.ed-msg {
+  grid-column: 1 / -1;
+  min-height: 16px;
+  padding-bottom: 2px;
+  font-size: 12px;
+  color: var(--good);
+}
+
+@media (max-width: 620px) {
+  .ed-row { grid-template-columns: 1fr; gap: 4px; padding: 9px 0; }
+  .ed-err { padding-left: 0; }
+}

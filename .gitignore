@@ -1,0 +1,6 @@
+.cache
+.claude
+.private
+docker-bake.json
+__pycache__/
+*.pyc
