@@ -186,12 +186,15 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                         _slug["v"] = (r.json().get("data") or {}).get("slug") or ""
         return _slug["v"]
 
-    async def auto_summary() -> None:
+    async def run_summary(period: str = "daily", source: str = "auto") -> None:
+        """One scheduled recap for `period`. Swallows the daily cap and never lets
+        a bad LLM/DB call kill the scheduler."""
         with contextlib.suppress(summary.CapReached):
             try:
-                await summary.generate(db, cfg, mqtt, install_token(), source="auto")
+                await summary.generate(db, cfg, mqtt, install_token(),
+                                       source=source, period=period)
             except Exception as e:  # never let a bad LLM call kill the scheduler
-                log.warning("auto summary failed: %s", e)
+                log.warning("%s summary failed: %s", period, e)
 
     async def ingest_and_broadcast(event_type, event_subtype=None, note=None,
                                    source="api", logged_at=None,
@@ -247,12 +250,31 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         cfg.data_dir.mkdir(parents=True, exist_ok=True)
         await db.init()
         reminders.start()
-        # Daily AI summary cron (SDD-003) — only when enabled and scheduled.
+        # AI recap crons (SDD-003). Daily whenever summaries are on; weekly and
+        # monthly are opt-in. All reuse summary_hour for the time of day, and a
+        # summary_hour of 0 keeps every cadence on-demand-only. `args` are passed
+        # positionally so APScheduler awaits the coroutine correctly.
         if cfg.summary_enabled and int(cfg.summary_hour) > 0:
+            hour = int(cfg.summary_hour)
             reminders.sched.add_job(
-                auto_summary, "cron", hour=int(cfg.summary_hour), minute=0,
+                run_summary, "cron", args=["daily", "auto"], hour=hour, minute=0,
                 timezone=cfg.timezone, id="summary_auto", replace_existing=True,
             )
+            if cfg.summary_weekly_enabled:
+                reminders.sched.add_job(
+                    run_summary, "cron", args=["weekly", "weekly"],
+                    day_of_week=cfg.summary_weekly_day, hour=hour, minute=0,
+                    timezone=cfg.timezone, id="summary_weekly", replace_existing=True,
+                )
+            if cfg.summary_monthly_enabled:
+                # Clamp to 1-28 so the cron always has a matching day — day 29-31
+                # would silently never fire in shorter months (e.g. February).
+                monthly_day = max(1, min(int(cfg.summary_monthly_day), 28))
+                reminders.sched.add_job(
+                    run_summary, "cron", args=["monthly", "monthly"],
+                    day=monthly_day, hour=hour, minute=0,
+                    timezone=cfg.timezone, id="summary_monthly", replace_existing=True,
+                )
         mqtt.on_event = ingest_and_broadcast
 
         async def on_connect():
