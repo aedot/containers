@@ -1,3 +1,5 @@
+rc = ".lefthookrc"
+
 [[remotes]]
 git_url = "https://github.com/home-operations/.github"
 ref = "main"

@@ -1,0 +1,5 @@
+# Sourced by lefthook (via `rc` in .lefthook.toml) before running hooks.
+# Ensures mise-managed tools (oxfmt, zizmor, actionlint, ...) are on PATH even
+# when a commit is launched from a GUI/app that doesn't inherit a mise-activated
+# shell environment.
+export PATH="$HOME/.local/share/mise/shims:$PATH"
