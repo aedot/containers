@@ -586,7 +586,10 @@
     var d = new Date(iso);
     if (isNaN(d.getTime())) return "";
     var m = (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
-    return (d.getHours() % 12 || 12) + ":" + m + (d.getHours() >= 12 ? " PM" : " AM");
+    var clock = (d.getHours() % 12 || 12) + ":" + m + (d.getHours() >= 12 ? " PM" : " AM");
+    // Prefix the date so "generated" reads e.g. "Aug 16, 6:00 AM" — a recap read
+    // the next day still shows which day it covers.
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", " + clock;
   }
   // Which cadence produced a summary — from the stored `source` (weekly/monthly
   // for the period recaps, otherwise daily).

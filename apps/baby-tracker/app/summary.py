@@ -87,9 +87,14 @@ def _day(cfg, now: dt.datetime) -> str:
 
 
 def _local_time(cfg, now: dt.datetime) -> str:
+    """Localized "<Mon D>, <h:mm AM/PM>" stamp for when the summary was generated
+    (published as the retained sensor's `time` attribute, shown on the dashboard
+    card). Includes the date, not just the clock, so a recap read the next day
+    still says when it was made."""
     t = now.astimezone(ZoneInfo(cfg.timezone))
     h = t.hour % 12 or 12
-    return f"{h}:{t.minute:02d} {'PM' if t.hour >= 12 else 'AM'}"
+    clock = f"{h}:{t.minute:02d} {'PM' if t.hour >= 12 else 'AM'}"
+    return f"{t.strftime('%b')} {t.day}, {clock}"
 
 
 def _fmt_hm(mins) -> str:
