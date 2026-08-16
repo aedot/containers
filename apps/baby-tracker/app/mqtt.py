@@ -386,7 +386,11 @@ class MqttBridge:
                     "icon": "mdi:clock-outline",
                     **common,
                 }), qos=1, retain=True)
-        # AI daily summary text sensor (only when the feature is enabled)
+        # AI summary text sensor (only when the feature is enabled). HA caps a
+        # sensor's STATE at 255 chars and the recap (+ tally footer) runs longer,
+        # so the state is a short preview and the FULL text + time + period ride
+        # as attributes (json_attributes_topic exposes the whole payload). A
+        # dashboard markdown card renders state_attr(..., 'text') in full.
         if getattr(self.cfg, "summary_enabled", False):
             await c.publish(
                 f"{DISCOVERY_PREFIX}/sensor/baby_tracker/summary/config",
@@ -394,7 +398,8 @@ class MqttBridge:
                     "name": "Daily Summary",
                     "unique_id": "baby_summary",
                     "state_topic": SUMMARY_TOPIC,
-                    "value_template": "{{ value_json.text }}",
+                    "value_template": "{{ value_json.text | truncate(120) }}",
+                    "json_attributes_topic": SUMMARY_TOPIC,
                     "icon": "mdi:robot-happy-outline",
                     **common,
                 }), qos=1, retain=True)
