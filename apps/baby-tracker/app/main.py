@@ -13,6 +13,7 @@ import contextlib
 import datetime as dt
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -31,6 +32,40 @@ from .stats import compute
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("baby")
+
+# The SPA polls /api/log every few seconds and health checks hit /healthz, so
+# uvicorn's access log fills up with `"GET /api/log HTTP/1.1" 200` lines that
+# bury anything useful. Drop the *successful* (< 400) hits on those chatty
+# endpoints while still logging errors on them and every other request. Set
+# ACCESS_LOG_QUIET_PATHS="" to see everything again, or add more comma-separated
+# path prefixes to quiet.
+_QUIET_PATHS = tuple(
+    p.strip() for p in os.environ.get(
+        "ACCESS_LOG_QUIET_PATHS", "/api/log,/healthz"
+    ).split(",") if p.strip()
+)
+
+
+class _QuietAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn.access records carry args = (client, method, full_path,
+        # http_version, status_code). Keep the record if we can't parse it.
+        args = record.args
+        if not isinstance(args, tuple) or len(args) < 5:
+            return True
+        path, status = args[2], args[4]
+        try:
+            failed = int(status) >= 400
+        except (TypeError, ValueError):
+            return True
+        if failed or not isinstance(path, str):
+            return True
+        path = path.split("?", 1)[0]
+        return not path.startswith(_QUIET_PATHS)
+
+
+if _QUIET_PATHS:
+    logging.getLogger("uvicorn.access").addFilter(_QuietAccessFilter())
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
