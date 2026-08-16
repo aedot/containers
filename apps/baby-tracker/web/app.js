@@ -603,12 +603,23 @@
     box.hidden = false;
     var txt = document.getElementById("ai-text");
     var meta = document.getElementById("ai-meta");
+    var badge = document.getElementById("ai-badge");
     if (data.latest && data.latest.text) {
       txt.textContent = "🤖 " + data.latest.text;
+      // Which cadence produced this? Stored in `source` (weekly/monthly for the
+      // period recaps; auto/manual/daily otherwise). Tells the reader whether
+      // they're looking at the day, week, or month at a glance.
+      if (badge) {
+        var src = data.latest.source;
+        badge.textContent = t(src === "weekly" ? "ai.periodWeekly"
+          : src === "monthly" ? "ai.periodMonthly" : "ai.periodDaily");
+        badge.hidden = false;
+      }
       meta.textContent = t("ai.generated", { time: fmtClock(data.latest.generated_at) })
         + " · " + t("ai.usage", { used: data.used_today, cap: data.cap });
     } else {
       txt.textContent = "🤖 " + t("ai.noSummary");
+      if (badge) badge.hidden = true;
       meta.textContent = t("ai.usage", { used: data.used_today, cap: data.cap });
     }
     if (!generatingSummary) {

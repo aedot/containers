@@ -615,6 +615,20 @@ html, body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Period pill (Daily / Weekly / Monthly) — tells you which recap this is now
+   that all three cadences share the one card. */
+.ai-badge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--glow);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
 .ai-foot {
   display: flex;
   align-items: center;
