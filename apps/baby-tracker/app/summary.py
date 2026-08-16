@@ -348,23 +348,36 @@ def stats_footer(cfg, digest: dict) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(cfg, digest: dict) -> str:
-    """The instruction, the (optional) period + output-language lines, then the
-    digest.
+# The timeframe each period covers, and the exact phrase the recap should use
+# to refer to it — so a daily recap opens with "today", a weekly with "this
+# week", a monthly with "this month", instead of the model defaulting to "today"
+# for all three.
+_TIMEFRAME = {
+    "daily": ("today", "today"),
+    "weekly": ("the last 7 days", "this week"),
+    "monthly": ("the previous calendar month", "this month"),
+}
 
-    Both extra lines are APPENDED, never substituted, so the configured prompt
+
+def build_prompt(cfg, digest: dict) -> str:
+    """The instruction, a timeframe line, the (optional) output-language line,
+    then the digest.
+
+    The extra lines are APPENDED, never substituted, so the configured prompt
     body survives untouched — including its "do not use em-dashes" instruction,
-    which measurably changes the output. A DAILY English digest appends nothing
-    at all, so a default install sends a byte-identical prompt to the pre-i18n
-    releases; weekly/monthly add one scope-setting line.
+    which measurably changes the output. The timeframe line anchors the recap to
+    today / this week / this month so the model names the right period instead of
+    always saying "today".
     """
     prompt = cfg.summary_prompt
     lang = display.device_lang(cfg)
     period = digest.get("period", "daily")
+    span, phrase = _TIMEFRAME.get(period, _TIMEFRAME["daily"])
+    line = f'This recap covers {span}; refer to that timeframe as "{phrase}"'
     if period != "daily":
-        span = "the last 7 days" if period == "weekly" else "the previous month"
-        prompt = (f"{prompt}\nThis is a {period} summary covering {span}; recap the "
-                  f"overall trends across the whole period, not a single day.")
+        line += (', never "today", and describe the trends across the whole '
+                 "period rather than a single day")
+    prompt = f"{prompt}\n{line}."
     if lang != "en":
         prompt = f"{prompt}\nRespond in {i18n.english_name(lang)}."
     return f"{prompt}\n\nRecent activity:\n{render_digest(digest)}"
