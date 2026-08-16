@@ -610,6 +610,10 @@ html, body {
   font-size: 13.5px;
   line-height: 1.5;
   color: var(--ink);
+  /* The summary is a recap followed by a multi-line deterministic tally; keep
+     its newlines so the footer reads as separate lines, and wrap long ones. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .ai-foot {
   display: flex;
