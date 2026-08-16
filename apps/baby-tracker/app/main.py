@@ -291,16 +291,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         # positionally so APScheduler awaits the coroutine correctly.
         if cfg.summary_enabled and int(cfg.summary_hour) > 0:
             hour = int(cfg.summary_hour)
-            reminders.sched.add_job(
+            daily_job = reminders.sched.add_job(
                 run_summary, "cron", args=["daily", "auto"], hour=hour, minute=0,
                 timezone=cfg.timezone, id="summary_auto", replace_existing=True,
             )
+            armed = [f"daily {hour:02d}:00"]
             if cfg.summary_weekly_enabled:
                 reminders.sched.add_job(
                     run_summary, "cron", args=["weekly", "weekly"],
                     day_of_week=cfg.summary_weekly_day, hour=hour, minute=0,
                     timezone=cfg.timezone, id="summary_weekly", replace_existing=True,
                 )
+                armed.append(f"weekly {cfg.summary_weekly_day} {hour:02d}:00")
             if cfg.summary_monthly_enabled:
                 # Clamp to 1-28 so the cron always has a matching day — day 29-31
                 # would silently never fire in shorter months (e.g. February).
@@ -310,6 +312,17 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                     day=monthly_day, hour=hour, minute=0,
                     timezone=cfg.timezone, id="summary_monthly", replace_existing=True,
                 )
+                armed.append(f"monthly day {monthly_day} {hour:02d}:00")
+            # Print the armed schedule (+ the next daily fire time) on every boot,
+            # so "is the cron actually running, and when?" is answerable from the
+            # logs without guessing. Cron fires at the NEXT match after start, so a
+            # container restarted past summary_hour won't run until the next day.
+            log.info("summary schedule armed [%s]: %s; next daily run %s",
+                     cfg.timezone, ", ".join(armed),
+                     getattr(daily_job, "next_run_time", None))
+        else:
+            log.info("summary schedule off (summary_enabled=%s, summary_hour=%s; "
+                     "hour 0 = on-demand only)", cfg.summary_enabled, cfg.summary_hour)
         mqtt.on_event = ingest_and_broadcast
 
         async def on_connect():
