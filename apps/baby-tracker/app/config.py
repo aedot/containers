@@ -29,10 +29,11 @@ OPTIONS_PATH = Path(os.environ.get("OPTIONS_PATH", "/data/options.json"))
 # Default AI daily-summary instruction (SDD-003). Pre-filled + editable; the code
 # always appends the de-identified digest, so edits change tone, not the data.
 DEFAULT_SUMMARY_PROMPT = (
-    "You are a warm, encouraging newborn-care assistant. From today's anonymized "
-    "activity, write a 2-3 sentence plain-language recap for a tired parent. "
+    "You are a warm, encouraging newborn-care assistant. From the anonymized "
+    "activity below, write a 2-3 sentence plain-language recap for a tired parent. "
+    "Open by naming the timeframe the recap covers (see the timeframe line below). "
     "Gently note anything that stands out (a longer gap between feeds, fewer "
-    "diapers than yesterday, a fever) without alarming, diagnosing, or giving "
+    "diapers than before, a fever) without alarming, diagnosing, or giving "
     "medical advice. No names, and do not use em-dashes. Respond with only the recap."
 )
 
