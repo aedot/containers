@@ -42,6 +42,7 @@
   "ai.periodDaily": "👶 Daily",
   "ai.periodWeekly": "📅 Weekly",
   "ai.periodMonthly": "🗓️ Monthly",
+  "ai.history": "Recent summaries",
   "ai.openSettings": "Open Settings, then the add-on, then Configuration",
   "group.feed": "Feed",
   "group.pump": "Pump",

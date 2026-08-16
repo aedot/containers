@@ -441,9 +441,11 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     async def get_summary():
         day = dt.datetime.now(dt.timezone.utc).astimezone(ZoneInfo(cfg.timezone)).strftime("%Y-%m-%d")
         used = await db.count_summaries_today(day)
+        recent = await db.list_summaries(8)
         return {
             "enabled": cfg.summary_enabled,
-            "latest": await db.latest_summary(),
+            "latest": recent[0] if recent else None,
+            "recent": recent,
             "used_today": used,
             "cap": cfg.summary_daily_cap,
             "can_generate": cfg.summary_enabled and used < cfg.summary_daily_cap,

@@ -67,6 +67,14 @@
           <span class="ai-meta" id="ai-meta"></span>
           <button type="button" class="ai-btn" id="ai-generate" data-i18n="ai.generate">Summarize now</button>
         </div>
+        <div class="ai-history" id="ai-history" hidden>
+          <button type="button" class="ai-hist-toggle" id="ai-hist-toggle"
+                  aria-expanded="false" aria-controls="ai-hist-list">
+            <span data-i18n="ai.history">Recent summaries</span>
+            <span class="ai-hist-count" id="ai-hist-count"></span>
+          </button>
+          <ul class="ai-hist-list" id="ai-hist-list" hidden></ul>
+        </div>
       </div>
     </section>
 
