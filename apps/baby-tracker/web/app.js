@@ -588,6 +588,44 @@
     var m = (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
     return (d.getHours() % 12 || 12) + ":" + m + (d.getHours() >= 12 ? " PM" : " AM");
   }
+  // Which cadence produced a summary — from the stored `source` (weekly/monthly
+  // for the period recaps, otherwise daily).
+  function periodLabel(source) {
+    return t(source === "weekly" ? "ai.periodWeekly"
+      : source === "monthly" ? "ai.periodMonthly" : "ai.periodDaily");
+  }
+  // Collapsible list of PAST recaps (recent[0] is the latest, already shown in
+  // the card above, so it's skipped here). Hidden entirely when there are none.
+  function renderAiHistory(recent) {
+    var wrap = document.getElementById("ai-history");
+    var ul = document.getElementById("ai-hist-list");
+    var count = document.getElementById("ai-hist-count");
+    if (!wrap || !ul) return;
+    var older = (recent || []).slice(1);
+    if (!older.length) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    if (count) count.textContent = "(" + older.length + ")";
+    ul.textContent = "";
+    older.forEach(function (s) {
+      var li = document.createElement("li");
+      var head = document.createElement("div");
+      head.className = "ai-hist-head";
+      var badge = document.createElement("span");
+      badge.className = "ai-badge";
+      badge.textContent = periodLabel(s.source);
+      var time = document.createElement("span");
+      time.className = "ai-meta";
+      time.textContent = t("ai.generated", { time: fmtClock(s.generated_at) });
+      head.appendChild(badge);
+      head.appendChild(time);
+      var body = document.createElement("div");
+      body.className = "ai-text";
+      body.textContent = s.text || "";
+      li.appendChild(head);
+      li.appendChild(body);
+      ul.appendChild(li);
+    });
+  }
   function loadSummary() {
     return apiGet("api/summary").then(renderAiSummary).catch(function () {});
   }
@@ -603,14 +641,22 @@
     box.hidden = false;
     var txt = document.getElementById("ai-text");
     var meta = document.getElementById("ai-meta");
+    var badge = document.getElementById("ai-badge");
     if (data.latest && data.latest.text) {
       txt.textContent = "🤖 " + data.latest.text;
+      // Tell the reader whether the card is showing the day, week, or month.
+      if (badge) {
+        badge.textContent = periodLabel(data.latest.source);
+        badge.hidden = false;
+      }
       meta.textContent = t("ai.generated", { time: fmtClock(data.latest.generated_at) })
         + " · " + t("ai.usage", { used: data.used_today, cap: data.cap });
     } else {
       txt.textContent = "🤖 " + t("ai.noSummary");
+      if (badge) badge.hidden = true;
       meta.textContent = t("ai.usage", { used: data.used_today, cap: data.cap });
     }
+    renderAiHistory(data.recent);
     if (!generatingSummary) {
       var btn = document.getElementById("ai-generate");
       btn.disabled = !data.can_generate;
@@ -636,6 +682,15 @@
   }
   function wireAiSummary() {
     document.getElementById("ai-generate").addEventListener("click", generateSummary);
+    var histToggle = document.getElementById("ai-hist-toggle");
+    if (histToggle) {
+      histToggle.addEventListener("click", function () {
+        var list = document.getElementById("ai-hist-list");
+        var open = histToggle.getAttribute("aria-expanded") === "true";
+        histToggle.setAttribute("aria-expanded", open ? "false" : "true");
+        if (list) list.hidden = open;
+      });
+    }
     document.getElementById("ai-notice-dismiss").addEventListener("click", function () {
       try { localStorage.setItem("bt_ai_notice_seen", "1"); } catch (e) {}
       document.getElementById("ai-notice").hidden = true;

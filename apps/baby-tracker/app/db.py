@@ -552,6 +552,20 @@ class SqliteDatabase:
             r = await cur.fetchone()
         return dict(r) if r else None
 
+    async def list_summaries(self, limit: int = 8) -> list[dict]:
+        """Most-recent-first summaries (newest = latest_summary), for the
+        in-app history list."""
+        import aiosqlite
+
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT * FROM baby_summaries ORDER BY generated_at DESC LIMIT ?",
+                (limit,),
+            )
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     async def count_summaries_today(self, day: str) -> int:
         import aiosqlite
 
@@ -1025,6 +1039,17 @@ class PostgresDatabase:
                 "SELECT * FROM baby_summaries ORDER BY generated_at DESC LIMIT 1"
             )
         return dict(r) if r else None
+
+    async def list_summaries(self, limit: int = 8) -> list[dict]:
+        """Most-recent-first summaries (newest = latest_summary), for the
+        in-app history list."""
+        pool = await self._get_pool()
+        async with pool.acquire() as con:
+            rows = await con.fetch(
+                "SELECT * FROM baby_summaries ORDER BY generated_at DESC LIMIT $1",
+                limit,
+            )
+        return [dict(r) for r in rows]
 
     async def count_summaries_today(self, day: str) -> int:
         pool = await self._get_pool()
