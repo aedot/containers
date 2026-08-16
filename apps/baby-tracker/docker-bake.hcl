@@ -9,7 +9,7 @@ variable "APP" {
 // native Dockerfile/pip managers, not by this variable.
 variable "VERSION" {
   // renovate: datasource=github-releases depName=hms-homelab/hms-baby-tracker
-  default = "2026.4.14"
+  default = "2026.4.15"
 }
 
 variable "SOURCE" {
