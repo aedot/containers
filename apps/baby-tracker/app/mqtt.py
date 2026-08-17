@@ -273,14 +273,18 @@ class MqttBridge:
         except aiomqtt.MqttError as e:
             log.warning("publish_assessment failed: %s", e)
 
-    async def publish_summary(self, text: str, time_str: str, source: str) -> None:
-        """Publish the latest AI daily summary on `baby/summary` (retained), read
-        by the sensor.baby_summary discovery entity."""
+    async def publish_summary(self, text: str, time_str: str, source: str,
+                              period: str = "daily") -> None:
+        """Publish the latest summary for `period` (retained), read by the matching
+        discovery sensor. Daily stays on `baby/summary` (unchanged); weekly/monthly
+        go to `baby/summary/weekly` and `baby/summary/monthly`, so each period keeps
+        its own latest recap instead of overwriting a single shared sensor."""
         if self._client is None:
             return
+        topic = SUMMARY_TOPIC if period == "daily" else f"{SUMMARY_TOPIC}/{period}"
         payload = {"text": (text or "")[:1000], "time": time_str or "", "source": source}
         try:
-            await self._client.publish(SUMMARY_TOPIC, json.dumps(payload), qos=0, retain=True)
+            await self._client.publish(topic, json.dumps(payload), qos=0, retain=True)
         except aiomqtt.MqttError as e:
             log.warning("publish_summary failed: %s", e)
 
@@ -386,23 +390,33 @@ class MqttBridge:
                     "icon": "mdi:clock-outline",
                     **common,
                 }), qos=1, retain=True)
-        # AI summary text sensor (only when the feature is enabled). HA caps a
+        # AI summary text sensors (only when the feature is enabled). HA caps a
         # sensor's STATE at 255 chars and the recap (+ tally footer) runs longer,
         # so the state is a short preview and the FULL text + time + period ride
         # as attributes (json_attributes_topic exposes the whole payload). A
-        # dashboard markdown card renders state_attr(..., 'text') in full.
+        # dashboard markdown card renders state_attr(..., 'text') in full. One
+        # sensor per enabled cadence, each on its own retained topic, so daily /
+        # weekly / monthly recaps don't overwrite each other.
         if getattr(self.cfg, "summary_enabled", False):
-            await c.publish(
-                f"{DISCOVERY_PREFIX}/sensor/baby_tracker/summary/config",
-                json.dumps({
-                    "name": "Daily Summary",
-                    "unique_id": "baby_summary",
-                    "state_topic": SUMMARY_TOPIC,
-                    "value_template": "{{ value_json.text | truncate(120) }}",
-                    "json_attributes_topic": SUMMARY_TOPIC,
-                    "icon": "mdi:robot-happy-outline",
-                    **common,
-                }), qos=1, retain=True)
+            summary_sensors = [("summary", "Daily Summary", SUMMARY_TOPIC)]
+            if getattr(self.cfg, "summary_weekly_enabled", False):
+                summary_sensors.append(
+                    ("summary_weekly", "Weekly Summary", f"{SUMMARY_TOPIC}/weekly"))
+            if getattr(self.cfg, "summary_monthly_enabled", False):
+                summary_sensors.append(
+                    ("summary_monthly", "Monthly Summary", f"{SUMMARY_TOPIC}/monthly"))
+            for oid, name, topic in summary_sensors:
+                await c.publish(
+                    f"{DISCOVERY_PREFIX}/sensor/baby_tracker/{oid}/config",
+                    json.dumps({
+                        "name": name,
+                        "unique_id": f"baby_{oid}",
+                        "state_topic": topic,
+                        "value_template": "{{ value_json.text | truncate(120) }}",
+                        "json_attributes_topic": topic,
+                        "icon": "mdi:robot-happy-outline",
+                        **common,
+                    }), qos=1, retain=True)
         # buttons
         for oid, name, et, st in BUTTONS:
             press = {"event_type": et}

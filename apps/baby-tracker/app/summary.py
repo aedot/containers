@@ -435,7 +435,7 @@ async def generate(db, cfg, mqtt=None, install_token: str | None = None,
         text = f"{text}\n\n{footer}"
     row = await db.insert_summary(text, cfg.summary_provider, source, day)
     if mqtt is not None:
-        await mqtt.publish_summary(text, _local_time(cfg, now), source)
+        await mqtt.publish_summary(text, _local_time(cfg, now), source, period)
         # Every SCHEDULED recap (daily/weekly/monthly) rides the unified
         # baby/alert bus so HA automations can push it to phones/email — the same
         # delivery path fever and feed/pump reminders already use. Manual
