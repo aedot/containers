@@ -103,12 +103,14 @@ def _fmt_hm(mins) -> str:
     return f"{m // 60}h {m % 60}m"
 
 
-def _window(cfg, period: str, now: dt.datetime):
+def _window(cfg, period: str, now: dt.datetime, daily_previous: bool = False):
     """(start, end, label, days) for the period, in the configured timezone.
 
-      daily   -> midnight today .. now              (1 day, partial)
-      weekly  -> the 7 whole days before today      (Sun run covers Sun..Sat)
-      monthly -> the previous calendar month
+      daily          -> midnight today .. now       (1 day, partial)
+      daily_previous -> the whole previous calendar day — for a morning run that
+                        recaps the day that just ended, not the empty new one
+      weekly         -> the 7 whole days before today
+      monthly        -> the previous calendar month
     """
     tz = ZoneInfo(cfg.timezone)
     now_local = now.astimezone(tz)
@@ -123,6 +125,9 @@ def _window(cfg, period: str, now: dt.datetime):
         prev_last = first_this - dt.timedelta(days=1)   # last day of prev month
         start = prev_last.replace(day=1)
         return start, first_this, start.strftime("%B %Y"), prev_last.day
+    if daily_previous:
+        start = today_start - dt.timedelta(days=1)
+        return start, today_start, start.strftime("%b %d"), 1
     end = now_local + dt.timedelta(minutes=1)
     return today_start, end, today_start.strftime("%b %d"), 1
 
@@ -142,9 +147,10 @@ def _trend(count, sleep_fn, period, start, end, cap):
         return out
     if period == "weekly":
         first, n = start, 7
-    else:  # daily: 3 days ending today (2 look-back days for context)
-        first, n = end.replace(hour=0, minute=0, second=0, microsecond=0) \
-            - dt.timedelta(days=2), 3
+    else:  # daily: 3 days ending on the window's day (handles the yesterday
+        # window too, via end-1min), with 2 look-back days for context
+        first, n = (end - dt.timedelta(minutes=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0) - dt.timedelta(days=2), 3
     for i in range(n):
         d0 = first + dt.timedelta(days=i)
         d1 = min(d0 + dt.timedelta(days=1), cap)
@@ -154,13 +160,14 @@ def _trend(count, sleep_fn, period, start, end, cap):
 
 
 async def build_digest(db, cfg, now: dt.datetime | None = None,
-                       period: str = "daily") -> dict:
+                       period: str = "daily", daily_previous: bool = False) -> dict:
     """De-identified aggregate digest for the LLM over `period`. Numbers only,
     no free text. Keys are named `*_today` for continuity with the daily path,
-    but hold the period total; `label`/`days`/`period` carry the scope."""
+    but hold the period total; `label`/`days`/`period`/`frame` carry the scope.
+    `daily_previous` shifts the daily window to the whole previous day."""
     tz = ZoneInfo(cfg.timezone)
     now = now or dt.datetime.now(dt.timezone.utc)
-    start, end, label, days = _window(cfg, period, now)
+    start, end, label, days = _window(cfg, period, now, daily_previous)
 
     # The daily path keeps its cheap fixed LIMIT; longer periods fetch by range
     # (one extra look-back day so the daily trend's context days are covered).
@@ -196,12 +203,12 @@ async def build_digest(db, cfg, now: dt.datetime | None = None,
                         for s in ("pee", "poop", "both", "change")}
 
     # currently sleeping = the latest sleep event in range is an unmatched start.
-    # Only meaningful for the daily digest (end == now); for weekly/monthly `end`
-    # is a past boundary, so "currently sleeping" would be a stale claim — force
-    # it False there rather than report last week's midnight sleep as "now".
+    # Only meaningful for the LIVE today window (end == now); a yesterday, weekly,
+    # or monthly window ends in the past, so "currently sleeping" would be a stale
+    # claim — force it False there rather than report a past midnight sleep as "now".
     sleep_evs = sorted((r for r in rows if r["event_type"] == "sleep"
                         and local(r) < end), key=lambda r: _parse(r["logged_at"]))
-    is_sleeping = (period == "daily" and bool(sleep_evs)
+    is_sleeping = (period == "daily" and not daily_previous and bool(sleep_evs)
                    and sleep_evs[-1].get("event_subtype") == "start")
 
     trend = _trend(count, lambda a, b: _sleep_minutes(rows, a, b, now),
@@ -233,10 +240,21 @@ async def build_digest(db, cfg, now: dt.datetime | None = None,
             delta = round(last["value"] - series[-2]["value"], 2) if len(series) >= 2 else None
             growth[m] = {"value": last["value"], "unit": last.get("value_unit"), "delta": delta}
 
+    # `span` = the descriptive window for the prompt; `frame` = the short phrase
+    # the recap should use ("today"/"yesterday"/"last week"/"last month").
+    if period == "daily":
+        span = frame = "yesterday" if daily_previous else "today"
+    elif period == "weekly":
+        span, frame = "the last 7 days", "last week"
+    else:  # monthly
+        span, frame = "the previous calendar month", "last month"
+
     return {
         "period": period,
         "label": label,
         "days": days,
+        "span": span,
+        "frame": frame,
         "feeds_today": count("feed", start, end),
         "feeds_by": feed_breakdown,
         "feed_volume_ml": round(feed_volume_ml) or None,
@@ -258,7 +276,7 @@ async def build_digest(db, cfg, now: dt.datetime | None = None,
 
 def render_digest(d: dict) -> str:
     daily = d.get("period", "daily") == "daily"
-    when = "today" if daily else f"over {d.get('label', '')}"
+    when = d.get("frame", "today") if daily else f"over {d.get('label', '')}"
     days = d.get("days", 1) or 1
 
     def avg(n):
@@ -353,17 +371,6 @@ def stats_footer(cfg, digest: dict) -> str:
     return "\n".join(lines)
 
 
-# The timeframe each period covers, and the exact phrase the recap should use
-# to refer to it — so a daily recap opens with "today", a weekly with "this
-# week", a monthly with "this month", instead of the model defaulting to "today"
-# for all three.
-_TIMEFRAME = {
-    "daily": ("today", "today"),
-    "weekly": ("the last 7 days", "this week"),
-    "monthly": ("the previous calendar month", "this month"),
-}
-
-
 def build_prompt(cfg, digest: dict) -> str:
     """The instruction, a timeframe line, the (optional) output-language line,
     then the digest.
@@ -371,17 +378,18 @@ def build_prompt(cfg, digest: dict) -> str:
     The extra lines are APPENDED, never substituted, so the configured prompt
     body survives untouched — including its "do not use em-dashes" instruction,
     which measurably changes the output. The timeframe line anchors the recap to
-    today / this week / this month so the model names the right period instead of
-    always saying "today".
+    the digest's `frame` (today / yesterday / last week / last month) so the model
+    names the right period instead of always saying "today".
     """
     prompt = cfg.summary_prompt
     lang = display.device_lang(cfg)
     period = digest.get("period", "daily")
-    span, phrase = _TIMEFRAME.get(period, _TIMEFRAME["daily"])
-    line = f'This recap covers {span}; refer to that timeframe as "{phrase}"'
+    span, frame = digest.get("span", "today"), digest.get("frame", "today")
+    line = f'This recap covers {span}; refer to that timeframe as "{frame}"'
+    if frame != "today":
+        line += ', never "today"'
     if period != "daily":
-        line += (', never "today", and describe the trends across the whole '
-                 "period rather than a single day")
+        line += ", and describe the trends across the whole period rather than a single day"
     prompt = f"{prompt}\n{line}."
     if lang != "en":
         prompt = f"{prompt}\nRespond in {i18n.english_name(lang)}."
@@ -413,7 +421,11 @@ async def generate(db, cfg, mqtt=None, install_token: str | None = None,
     # monthly recaps fire at most once per week/month and are not capped.
     if period == "daily" and await db.count_summaries_today(day) >= cfg.summary_daily_cap:
         raise CapReached(day)
-    digest = await build_digest(db, cfg, now, period)
+    # A SCHEDULED daily recaps the whole day that just ended (so an early-morning
+    # run isn't summarizing an empty new day); an on-demand "Summarize now" stays
+    # a live snapshot of today.
+    daily_previous = (period == "daily" and source != "manual")
+    digest = await build_digest(db, cfg, now, period, daily_previous)
     text = (await llm.generate(cfg, build_prompt(cfg, digest), install_token)) or ""
     text = text.strip() or "No summary available."
     # Append the exact period tally to the recap so the numbers always appear in
