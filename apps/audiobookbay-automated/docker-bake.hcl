@@ -9,11 +9,11 @@ variable "APP" {
 // there is no semver datasource to track; the base image + pip deps are tracked
 // by renovate's native Dockerfile/pip managers.
 variable "VERSION" {
-  default = "2026.9.19"
+  default = "0.1.1"
 }
 
 variable "SOURCE" {
-  default = "https://github.com/JamesRy96/audiobookbay-automated"
+  default = "https://github.com/aedot/containers"
 }
 
 group "default" {

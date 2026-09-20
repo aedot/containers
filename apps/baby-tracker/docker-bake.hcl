@@ -13,7 +13,7 @@ variable "VERSION" {
 }
 
 variable "SOURCE" {
-  default = "https://github.com/hms-homelab/hms-baby-tracker"
+  default = "https://github.com/aedot/containers"
 }
 
 group "default" {
