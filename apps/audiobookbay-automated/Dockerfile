@@ -7,7 +7,7 @@
 # Served with gunicorn rather than the Flask dev server; gunicorn is added to
 # the vendored requirements.txt.
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ARG VERSION
 LABEL org.opencontainers.image.version="${VERSION}"
