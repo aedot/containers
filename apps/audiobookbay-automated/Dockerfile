@@ -23,6 +23,11 @@ COPY app/ /app/
 
 EXPOSE 5078
 
+# nobody's home is /nonexistent; point HOME at a writable path so the niquests /
+# urllib3-future HTTP client can start its control server under a read-only rootfs
+# (with /tmp mounted as tmpfs).
+ENV HOME=/tmp
+
 USER 65534:65534
 
 CMD ["gunicorn", "--bind", "0.0.0.0:5078", "--workers", "2", "app:app"]

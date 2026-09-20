@@ -1,0 +1,29 @@
+services:
+  audiobookbay-automated:
+    image: ghcr.io/aedot/audiobookbay-automated:2026.9.19
+    container_name: audiobookbay-automated
+    # The data volume permissions (if any) must match this user:group.
+    user: 65534:65534
+    read_only: true
+    tmpfs:
+      # gunicorn writes its worker heartbeat file under /tmp.
+      - /tmp:rw
+    ports:
+      - "5078:5078"
+    environment:
+      # Torrent client: qbittorrent | transmission | delugeweb
+      DOWNLOAD_CLIENT: qbittorrent
+      DL_SCHEME: http
+      DL_HOST: 192.168.1.123
+      DL_PORT: "8080"
+      DL_USERNAME: changeme
+      DL_PASSWORD: changeme
+      DL_CATEGORY: abb-downloader
+      # Root path for downloads, as seen by the torrent client.
+      SAVE_PATH_BASE: /audiobooks
+      ABB_HOSTNAME: audiobookbay.lu
+      PAGE_LIMIT: "5"
+      # Optional: adds a link to the navigation bar.
+      # NAV_LINK_NAME: Open Audiobook Player
+      # NAV_LINK_URL: https://audiobooks.yourdomain.com/
+    restart: unless-stopped
