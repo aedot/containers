@@ -1,0 +1,8 @@
+flask
+requests
+beautifulsoup4
+qbittorrent-api
+python-dotenv
+transmission-rpc
+deluge-web-client
+gunicorn
