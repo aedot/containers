@@ -4,7 +4,7 @@
 # finished audiobooks from /input into /audiobooks on a loop. Built on a plain
 # python image instead of linuxserver/beets, whose s6 init needs root.
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 ARG VERSION
 LABEL org.opencontainers.image.version="${VERSION}"
