@@ -1,4 +1,4 @@
-plugins: audible edit fromfilename scrub
+plugins: audible edit fromfilename scrub plexupdate
 
 directory: /audiobooks
 library: /config/library.db
@@ -17,9 +17,6 @@ import:
   incremental: yes
   quiet_fallback: skip
 
-musicbrainz:
-  enabled: no
-
 audible:
   match_chapters: true
   data_source_mismatch_penalty: 0.0
@@ -33,3 +30,7 @@ audible:
 
 scrub:
   auto: yes
+
+# Plex connection: set PLEX_HOST, PLEX_PORT and PLEX_LIBRARY_NAME in the container
+# environment to override the plugin defaults (localhost, 32400, Music).
+# The token comes from `beet plexupdate --auth` and is stored in /config/plex_token.json.

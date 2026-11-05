@@ -9,8 +9,9 @@ FROM python:3.13-slim
 ARG VERSION
 LABEL org.opencontainers.image.version="${VERSION}"
 
-# beets-audible pins the compatible beets range itself
-RUN pip install --no-cache-dir "beets-audible==${VERSION}"
+# beets-audible pins the compatible beets range itself; the extra pulls in the
+# plexupdate plugin's dependencies
+RUN pip install --no-cache-dir "beets-audible==${VERSION}" "beets[plexupdate]"
 
 COPY defaults/config.yaml /defaults/config.yaml
 COPY --chmod=0755 entrypoint.sh /entrypoint.sh
