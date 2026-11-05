@@ -1,0 +1,35 @@
+plugins: audible edit fromfilename scrub
+
+directory: /audiobooks
+library: /config/library.db
+
+paths:
+  "albumtype:audiobook series_name::.+ series_position::.+": $albumartist/%ifdef{series_name}/%ifdef{series_position} - $album%aunique{}/$track - $title
+  "albumtype:audiobook series_name::.+": $albumartist/%ifdef{series_name}/$album%aunique{}/$track - $title
+  "albumtype:audiobook": $albumartist/$album%aunique{}/$track - $title
+  default: $albumartist/$album%aunique{}/$track - $title
+  singleton: Non-Album/$artist - $title
+  comp: Compilations/$album%aunique{}/$track - $title
+  albumtype_soundtrack: Soundtracks/$album/$track $title
+
+import:
+  move: yes
+  incremental: yes
+  quiet_fallback: skip
+
+musicbrainz:
+  enabled: no
+
+audible:
+  match_chapters: true
+  data_source_mismatch_penalty: 0.0
+  fetch_art: true
+  include_narrator_in_artists: true
+  keep_series_reference_in_title: true
+  keep_series_reference_in_subtitle: true
+  write_description_file: true
+  write_reader_file: true
+  region: us
+
+scrub:
+  auto: yes
